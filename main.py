@@ -9,6 +9,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver import Chrome, ChromeOptions
+from pdfrw import  PdfReader, PdfWriter
 
 dir_path = os.getcwd()
 download_path = os.path.join(dir_path, "letters")
@@ -40,7 +41,7 @@ print_settings = {
 }
 
 options = ChromeOptions()
-# options.binary_location = chrome_path
+options.binary_location = chrome_path
 options.add_experimental_option("prefs", {
     "printing.print_preview_sticky_settings.appState": json.dumps(print_settings),
     "savefile.default_directory": download_path, #Change default directory for downloads
@@ -91,7 +92,7 @@ def photo_amount():
     photo_count = len(search)
     return photo_count
 
-def make_pdf(letter_count, penpal_dir):
+def make_pdf(letter_count, penpal_dir, penpal):
     letter = driver.find_element(By.XPATH, signature_xpath)
     innerhtml = letter.get_attribute('innerHTML')
     username = re.search(signature_regex, innerhtml).group(1)
@@ -99,25 +100,36 @@ def make_pdf(letter_count, penpal_dir):
     pdf_name = f"letter{letter_count}_{username}_{date}.pdf"
     file = "SLOWLY.pdf"
 
+    # Checks for left over SLOWLY.pdf files and removes if present
     if exists(f"{download_path}\\{file}"):
         os.remove(f"{download_path}\\{file}")
+    # Checks if letter already exists in penpal dir, and skips over it
     if exists(f"{penpal_dir}\\{file}"):
-        return print("Letter already exists! \nSkipping...")
+        os.remove(f"{penpal_dir}\\{file}")
+        # return print("Letter already exists! \nSkipping...") # unnecessary
 
     # Prints letter as PDF with name "SLOWLY.pdf" in download_path
     print(f"Printing letter {letter_count}")
     driver.execute_script("window.print()")
     time.sleep(2)
 
+    # Moves PDF into penpal_dir and renames it to pdf_name
     os.replace(f"{download_path}\\{file}", f"{penpal_dir}\\{file}") # Moves SLOWLY.pdf into penpal_dir
     os.rename(f"{penpal_dir}\\{file}", f"{penpal_dir}\\{pdf_name}") # Renames SLOWLY.pdf to pdf_name var
+
+    # Write meta information into PDF file
+    data = PdfReader(f"{penpal_dir}\\{pdf_name}")
+    data.Info.Letter = letter_count
+    data.Info.Penpal = penpal
+    os.remove(f"{penpal_dir}\\{pdf_name}")
+    PdfWriter(f"{penpal_dir}\\{pdf_name}", trailer=data).write()
 
     if exists(f"{penpal_dir}\\{pdf_name}"):
         print(f"Letter {letter_count} successfully printed!")
     else:
         print(f"Letter {letter_count} failed to print.")
 
-def open_letter(letter_int, letter_count, penpal_dir):
+def open_letter(letter_int, letter_count, penpal_dir, penpal):
     letters = driver.find_elements(By.XPATH, xpath)
     letter = letters[letter_int]
     letter.click()
@@ -139,7 +151,7 @@ def open_letter(letter_int, letter_count, penpal_dir):
     # may be able to use isDisplay() method that returns a boolean if the image is displayed.
     # whether or not this will confirm if it is loaded or just being displayed, I'm not sure.
     # could use the driver.wait.until method for this (or whatever it is).
-    make_pdf(letter_count, penpal_dir)
+    make_pdf(letter_count, penpal_dir, penpal)
     print("Going back to letters...")
 
 def mk_penpal_dir(penpal):
@@ -171,15 +183,35 @@ def main():
     penpal = re.search(penpal_regex, penpal_name_obtain).group(1)
     penpal_dir = mk_penpal_dir(penpal)
 
+    # check penpal name and letter count on PDFs if they currently exist within the penpals directory.
+    existing_letters = [] # currently useless
+    for penpal_file in os.listdir(penpal_dir):
+        if penpal_file.endswith(".pdf"):
+            penpal_file_path = os.path.join(penpal_dir, penpal_file)
+            meta_check = PdfReader(penpal_file_path).Info
+            for key, value in meta_check.items():
+                if key == "/Letter":
+                    # value = int(re.search("\((\d*)\)", value).group(1))
+                    # int_value = int(value)
+                    # int_minus_one = (int_value - 1)
+                    existing_letters.append(int(value))
+    # print(existing_letters)
+    # find letters and count how many have been sent/received on SLOWLY
     letters = driver.find_elements(By.XPATH, xpath)
     current_letter_int = len(letters) # tracks which letter is currently being processed
     amount_letters = current_letter_int # amount of letters available to download
+
     for letter in range(0, amount_letters):
-        open_letter(letter, current_letter_int, penpal_dir)
-        current_letter_int -= 1
-        back_button = driver.find_element(By.XPATH, back_button_xpath)
-        back_button.click()
-        time.sleep(2)
+        # print(letter)
+        if (current_letter_int) in existing_letters:
+            print("Letter already exists! \nSkipping...")
+            current_letter_int -= 1
+        else:
+            open_letter(letter, current_letter_int, penpal_dir, penpal)
+            current_letter_int -= 1
+            back_button = driver.find_element(By.XPATH, back_button_xpath)
+            back_button.click()
+            time.sleep(2)
     else:
         print(f"{amount_letters} letters successfully printed!")
         driver.quit()
