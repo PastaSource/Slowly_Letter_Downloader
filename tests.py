@@ -15,7 +15,7 @@ file = "test.pdf"
 file_path = os.path.join(download_path, file)
 attribute = "LetterNumber"
 letter_number = 1
-penpal = "Billy"
+penpal = "Yasdnil"
 penpal_path = os.path.join(download_path, penpal)
 
 
@@ -28,7 +28,7 @@ penpal_path = os.path.join(download_path, penpal)
 
 
 
-
+letter_list = []
 for pdf in os.listdir(penpal_path):
     if pdf.endswith(".pdf"):
         pdf_path = os.path.join(penpal_path, pdf)
@@ -36,7 +36,10 @@ for pdf in os.listdir(penpal_path):
         for key,value in check.items():
             if key == "/Letter" or key == "/Penpal":
                 print(key, value)
-
+                if key == "/Letter":
+                    # value = int(re.search("\((\d*)\)", value).group(1))
+                    letter_list.append(int(value))
+print(sorted(letter_list))
 # for pdf in glob.glob(penpal_path, "*.pdf"):
 #     print(pdf)
 #     print("work")
