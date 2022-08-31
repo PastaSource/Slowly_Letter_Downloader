@@ -14,6 +14,7 @@ from pdfrw import  PdfReader, PdfWriter
 dir_path = os.getcwd()
 download_path = os.path.join(dir_path, "letters")
 chrome_path = os.path.join(dir_path, "chromium\\app\\Chrome-bin\\chrome.exe")
+user_data_path = os.path.join(dir_path, "sessions")
 website = 'https://web.slowly.app/'
 home_url = 'https://web.slowly.app/home'
 current_url_regex = '([\w]*:\/\/[\w.]*\/)([\w]*)'
@@ -42,6 +43,7 @@ print_settings = {
 
 options = ChromeOptions()
 options.binary_location = chrome_path
+options.add_argument(f"user-data-dir={user_data_path}")
 options.add_experimental_option("prefs", {
     "printing.print_preview_sticky_settings.appState": json.dumps(print_settings),
     "savefile.default_directory": download_path, #Change default directory for downloads
