@@ -1,75 +1,23 @@
-import os
-from os.path import exists
-import re
-import json
-from pdfrw import  PdfReader, PdfWriter, IndirectPdfDict
-from PyPDF2 import PdfFileReader, PdfFileWriter
-import sys
-import glob
+
 import customtkinter
 import tkinter
 import tkinter.messagebox
-
-#
-# dir_path = os.getcwd()
-# download_path = os.path.join(dir_path, "letters")
-# file = "test.pdf"
-# file_path = os.path.join(download_path, file)
-# attribute = "LetterNumber"
-# letter_number = 1
-# penpal = "Yasdnil"
-# penpal_path = os.path.join(download_path, penpal)
-#
-#
-# # data = PdfReader(file_path)
-# # data.Info.Letter = "3"
-# # data.Info.Penpal = "Billy"
-# #
-# # os.remove(file_path)
-# # PdfWriter(file_path, trailer=data).write()
-#
-#
-#
-# letter_list = []
-# for pdf in os.listdir(penpal_path):
-#     if pdf.endswith(".pdf"):
-#         pdf_path = os.path.join(penpal_path, pdf)
-#         check = PdfReader(pdf_path).Info
-#         for key,value in check.items():
-#             if key == "/Letter" or key == "/Penpal":
-#                 print(key, value)
-#                 if key == "/Letter":
-#                     # value = int(re.search("\((\d*)\)", value).group(1))
-#                     letter_list.append(int(value))
-# print(sorted(letter_list))
-# # for pdf in glob.glob(penpal_path, "*.pdf"):
-# #     print(pdf)
-# #     print("work")
-
-customtkinter.set_appearance_mode("System")  # Modes: "System" (standard), "Dark", "Light"
-customtkinter.set_default_color_theme("dark-blue")  # Themes: "blue" (standard), "green", "dark-blue"
-
-penpal_amount = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31]
-
-
-
-
-customtkinter.set_appearance_mode("System")  # Modes: "System" (standard), "Dark", "Light"
-customtkinter.set_default_color_theme("blue")  # Themes: "blue" (standard), "green", "dark-blue"
-
 
 class App(customtkinter.CTk):
 
     WIDTH = 780
     HEIGHT = 520
 
-    def __init__(self):
+    customtkinter.set_appearance_mode("System")  # Modes: "System" (standard), "Dark", "Light"
+    customtkinter.set_default_color_theme("blue")  # Themes: "blue" (standard), "green", "dark-blue"
+
+    def __init__(self, count):
         super().__init__()
 
         self.title("CustomTkinter complex_example.py")
         self.geometry(f"{App.WIDTH}x{App.HEIGHT}")
         self.protocol("WM_DELETE_WINDOW", self.on_closing)  # call .on_closing() when app gets closed
-
+        self.count = count
         # ============ create two frames ============
 
         # configure grid layout (2x1)
@@ -112,11 +60,11 @@ class App(customtkinter.CTk):
 
         # configure grid layout (1x11)
         self.frame_left_second.grid_rowconfigure(0, minsize=10)   # empty row with minsize as spacing
-        self.frame_left_second.grid_rowconfigure(len(penpal_amount) + 2, weight=1)  # empty row as spacing
+        self.frame_left_second.grid_rowconfigure(len(count) + 2, weight=1)  # empty row as spacing
 
         self.label_1 = customtkinter.CTkLabel(master=self.frame_left_second,
                                               text="Penpals",
-                                              text_font=("Roboto Medium", -16), width=180)  # font name and size in px
+                                              text_font=("Roboto Medium", -20), width=180)  # font name and size in px
         self.label_1.grid(row=1, column=0, pady=10, padx=10)
 
         # Button creation
@@ -125,10 +73,11 @@ class App(customtkinter.CTk):
         #         master=self.frame_left_second, text=f"CTkButton{penpal + 1}",
         #         command=self.button_event, height=1, width=160)
         #     self.button.grid(row=(penpal + 2), column=0, pady=5, padx=20)
-        for penpal in range(0, len(penpal_amount)):
+
+        for index, penpal in enumerate(self.count):
             self.button = customtkinter.CTkCheckBox(
-                master=self.frame_left_second, text=f"Penpal {penpal + 1}")
-            self.button.grid(row=(penpal + 2), column=0, pady=5, padx=20)
+                master=self.frame_left_second, text=f"{penpal}")
+            self.button.grid(row=(index + 2), column=0, pady=5, padx=20, sticky="nw")
 
         # self.label_mode = customtkinter.CTkLabel(master=self.frame_left, text="Appearance Mode:")
         # self.label_mode.grid(row=9, column=0, pady=0, padx=20, sticky="w")
@@ -248,8 +197,9 @@ class App(customtkinter.CTk):
         self.check_box_1.configure(state=tkinter.DISABLED, text="CheckBox disabled")
         self.check_box_2.select()
 
-    def penpal_count(self, count):
-        penpals = {}
+    # def penpal_count(self, count):
+    #     self.penpals = count
+    #     return self.penpals
 
     def button_event(self):
         print("Button pressed")
@@ -262,7 +212,9 @@ class App(customtkinter.CTk):
 
 
 if __name__ == "__main__":
-    app = App()
-    # app.penpal_count()
-    # app.mainloop()
+    pen = ["Henry","Anus","Billy","George","Scooby Doo","anallord420","Lily","Yamaha","Pepsi Max",
+               "Shirt","8492028293","A bus stop","OMGABUS","bakedbeans","candle","footfetish","Latty"]
+    app = App(pen)
+    # app.penpal_count(pen)
+    app.mainloop()
 

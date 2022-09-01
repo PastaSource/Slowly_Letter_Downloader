@@ -10,6 +10,7 @@ from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver import Chrome, ChromeOptions
 from pdfrw import  PdfReader, PdfWriter
+from interface.interface import App
 
 dir_path = os.getcwd()
 download_path = os.path.join(dir_path, "letters")
@@ -22,12 +23,14 @@ friend_regex = '([\w]*:\/\/[\w.]*\/)(friend)(\/[\w\d]*)'
 signature_regex = '>(.*)<\/h5><p>(.* \d\d\d\d) .*<br>'
 dot_regex = '<button>\d*<\/button>'
 penpal_regex = '<span.*mt-1">(\w*)<\/span>'
+penpals_regex = '">(.*)<\/h6>'
 xpath = "//div[@class='col-6 col-xl-4 mb-3']" # Outer HTML
 signature_xpath = "//div[@class='media-body mx-3 mt-2']" # Finds name and date printed on letter
 dot_xpath = "//ul[@class='slick-dots']"
 next_button_xpath = "//button[@class='slick-arrow slick-next']"
 back_button_xpath = "//a[@class='no-underline link py-2 px-2 ml-n2 col-pixel-width-50 flip active']"
 penpal_xpath = "//div[@class='col-9 pt-2']"
+penpals_xpath = "//h6[@class='col pl-0 pr-0 mt-1 mb-0 text-truncate ']" # Used to create list of all penpals
 
 print_settings = {
     "recentDestinations": [{
@@ -165,10 +168,33 @@ def mk_penpal_dir(penpal):
         os.mkdir(penpal_dir)
     return penpal_dir
 
+def gui(count):
+    app=App(count)
+    print("opening GUI")
+    app.mainloop()
+
+
 def main():
     while driver.current_url != home_url:
         pass
     print("Successful login detected! \nPlease select a penpal.")
+
+    # Why no work?!
+    # try:
+    #     WebDriverWait(driver, 30).until(
+    #         EC.presence_of_element_located((By.XPATH, penpals_xpath)))
+    # finally:
+    #     pass
+    time.sleep(3) # Bandaid until above is fixed
+    available_penpals = driver.find_elements(By.XPATH, penpals_xpath)
+    penpals_list = []
+    for available_penpal in available_penpals:
+        penpal = available_penpal.get_attribute('outerHTML')
+        penpal_name = re.search(penpals_regex, penpal).group(1)
+        penpals_list.append(penpal_name)
+    gui(penpals_list)
+
+
     while re.search(current_url_regex, driver.current_url).group(2) != "friend":
         pass
     print("Penpal selected!")
