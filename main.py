@@ -10,7 +10,8 @@ from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver import Chrome, ChromeOptions
 from pdfrw import  PdfReader, PdfWriter
-from interface.interface import App
+# from interface.interface import App
+# from interface.interface_embeded_web import App
 
 dir_path = os.getcwd()
 download_path = os.path.join(dir_path, "letters")
@@ -47,6 +48,7 @@ print_settings = {
 options = ChromeOptions()
 options.binary_location = chrome_path
 options.add_argument(f"user-data-dir={user_data_path}")
+# options.add_argument("--headless")
 options.add_experimental_option("prefs", {
     "printing.print_preview_sticky_settings.appState": json.dumps(print_settings),
     "savefile.default_directory": download_path, #Change default directory for downloads
