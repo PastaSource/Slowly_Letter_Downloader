@@ -1,4 +1,3 @@
-import base64
 import re
 import os
 from os.path import exists
@@ -49,18 +48,6 @@ back_button_xpath = "//a[@class='no-underline link py-2 px-2 ml-n2 col-pixel-wid
 penpal_xpath = "//div[@class='col-9 pt-2']"
 penpals_xpath = "//h6[@class='col pl-0 pr-0 mt-1 mb-0 text-truncate ']"  # Used to create list of all penpals
 popup_xpath = "//button[@class='Toastify__close-button Toastify__close-button--warning']"
-
-print_settings = {
-    "recentDestinations": [{
-        "id": "Save as PDF",
-        "origin": "local",
-        "account": "",
-    }],
-    "selectedDestinationId": "Save as PDF",
-    "version": 2,
-    "isHeaderFooterEnabled": False,
-    "isLandscapeEnabled": True
-}
 
 chrome_running = False
 
@@ -151,12 +138,12 @@ class App(customtkinter.CTk):
 
         # ============ frame_bottom ============
         # Integrated browser frame
-        # self.run_button = customtkinter.CTkButton(master=self.frame_bottom_browser,
-        #                                           text="Run", text_font=(self.typewriter_font, -20),
-        #                                           border_width=2,  # <- custom border_width
-        #                                           fg_color=None,  # <- no fg_color
-        #                                           command=self.run_button_event)
-        # self.run_button.grid(row=8, column=2, columnspan=1, pady=20, padx=20, sticky="se")
+        self.run_button = customtkinter.CTkButton(master=self.frame_bottom_browser,
+                                                  text="Run", text_font=(self.typewriter_font, -20),
+                                                  border_width=2,  # <- custom border_width
+                                                  fg_color=None,  # <- no fg_color
+                                                  command=self.run_button_event)
+        self.run_button.grid(row=8, column=2, columnspan=1, pady=20, padx=20, sticky="se")
 
         self.load_penpals_button = customtkinter.CTkButton(master=self.frame_bottom_browser,
                                                            text="Load Penpals", text_font=(self.typewriter_font, -20),
@@ -180,13 +167,13 @@ class App(customtkinter.CTk):
                                                            command=self.select_all_button_event)
         self.load_penpals_button.grid(row=8, column=1, columnspan=1, pady=20, padx=20, sticky="sw")
 
-        # self.check_button = customtkinter.CTkButton(master=self.frame_bottom_progress,
-        #                                             text="Show state",
-        #                                             text_font=(self.typewriter_font, -20),
-        #                                             border_width=2,  # <- custom border_width
-        #                                             fg_color=None,  # <- no fg_color
-        #                                             command=self.penpal_checkbox_event)
-        # self.check_button.grid(row=8, column=0, columnspan=1, pady=20, padx=20, sticky="sw")
+        self.check_button = customtkinter.CTkButton(master=self.frame_bottom_progress,
+                                                    text="Show state",
+                                                    text_font=(self.typewriter_font, -20),
+                                                    border_width=2,  # <- custom border_width
+                                                    fg_color=None,  # <- no fg_color
+                                                    command=self.penpal_checkbox_event)
+        self.check_button.grid(row=8, column=0, columnspan=1, pady=20, padx=20, sticky="sw")
 
         # ============ frame_left ============
         # Integrated browser frame
@@ -611,27 +598,24 @@ def make_pdf(driver, letter_count, penpal_dir, penpal):
     username = re.search(signature_regex, innerhtml).group(1)
     date = re.search(signature_regex, innerhtml).group(2)
     pdf_name = f"letter{letter_count}_{username}_{date}.pdf"
-    # file = "SLOWLY.pdf"
-    #
-    # # Checks for left over SLOWLY.pdf files and removes if present
-    # if exists(f"{download_path}\\{file}"):
-    #     os.remove(f"{download_path}\\{file}")
-    # # Checks if letter already exists in penpal dir, and skips over it
-    # if exists(f"{penpal_dir}\\{file}"):
-    #     os.remove(f"{penpal_dir}\\{file}")
-    #     # return print("Letter already exists! \nSkipping...") # unnecessary
+    file = "SLOWLY.pdf"
+
+    # Checks for left over SLOWLY.pdf files and removes if present
+    if exists(f"{download_path}\\{file}"):
+        os.remove(f"{download_path}\\{file}")
+    # Checks if letter already exists in penpal dir, and skips over it
+    if exists(f"{penpal_dir}\\{file}"):
+        os.remove(f"{penpal_dir}\\{file}")
+        # return print("Letter already exists! \nSkipping...") # unnecessary
 
     # Prints letter as PDF with name "SLOWLY.pdf" in download_path
     print(f"Printing letter {letter_count}")
-    # driver.execute_script("window.print();")
-    pdf_data = driver.execute_cdp_cmd("Page.printToPDF", print_settings)
-    with open(os.path.join(download_path, penpal_dir, pdf_name), 'wb') as file:
-        file.write(base64.b64decode(pdf_data['data']))
-    time.sleep(1)
+    driver.execute_script("window.print();")
+    time.sleep(2)
 
-    # # Moves PDF into penpal_dir and renames it to pdf_name
-    # os.replace(f"{download_path}\\{file}", f"{penpal_dir}\\{file}")  # Moves SLOWLY.pdf into penpal_dir
-    # os.rename(f"{penpal_dir}\\{file}", f"{penpal_dir}\\{pdf_name}")  # Renames SLOWLY.pdf to pdf_name var
+    # Moves PDF into penpal_dir and renames it to pdf_name
+    os.replace(f"{download_path}\\{file}", f"{penpal_dir}\\{file}")  # Moves SLOWLY.pdf into penpal_dir
+    os.rename(f"{penpal_dir}\\{file}", f"{penpal_dir}\\{pdf_name}")  # Renames SLOWLY.pdf to pdf_name var
 
     # Write meta information into PDF file
     data = PdfReader(f"{penpal_dir}\\{pdf_name}")
@@ -759,6 +743,18 @@ def load_and_print(driver, penpal):
 
 
 def open_chrome():
+    print_settings = {
+        "recentDestinations": [{
+            "id": "Save as PDF",
+            "origin": "local",
+            "account": "",
+        }],
+        "selectedDestinationId": "Save as PDF",
+        "version": 2,
+        "isHeaderFooterEnabled": False,
+        "isLandscapeEnabled": True
+    }
+
     options = ChromeOptions()
     options.binary_location = chrome_path
     options.add_argument("--start-maximized")
@@ -766,7 +762,7 @@ def open_chrome():
     options.add_argument(f"user-data-dir={user_data_path}")
     options.add_argument("--headless")
     options.add_argument('--enable-print-browser')
-    options.add_experimental_option("prefs", {  # May not be needed with new PDF printing implementation
+    options.add_experimental_option("prefs", {
         "printing.print_preview_sticky_settings.appState": json.dumps(print_settings),
         "savefile.default_directory": download_path,  # Change default directory for downloads
         "download.default_directory": download_path,  # Change default directory for downloads

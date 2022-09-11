@@ -1,45 +1,71 @@
+import base64
 import os
 from os.path import exists
-import re
 import json
-from pdfrw import  PdfReader, PdfWriter, IndirectPdfDict
-from PyPDF2 import PdfFileReader, PdfFileWriter
-import sys
-import glob
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver import Chrome, ChromeOptions
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from pdfminer.pdfpage import PDFPage
+from pdfminer.pdfpage import PDFParser
+from pdfminer.pdfpage import PDFDocument
 
-
-
+# Paths
 dir_path = os.getcwd()
 download_path = os.path.join(dir_path, "letters")
-file = "test.pdf"
-file_path = os.path.join(download_path, file)
-attribute = "LetterNumber"
-letter_number = 1
-penpal = "Yasdnil"
-penpal_path = os.path.join(download_path, penpal)
+chrome_path = os.path.join(dir_path, "chromium\\app\\Chrome-bin\\chrome.exe")
+user_data_path = os.path.join(dir_path, "sessions")
+
+website = "https://www.google.com/"
 
 
-# data = PdfReader(file_path)
-# data.Info.Letter = "3"
-# data.Info.Penpal = "Billy"
-#
-# os.remove(file_path)
-# PdfWriter(file_path, trailer=data).write()
+def main():
+    print_settings = {
+        "recentDestinations": [{
+            "id": "Save as PDF",
+            "origin": "local",
+            "account": "",
+        }],
+        "selectedDestinationId": "Save as PDF",
+        "version": 2,
+        "isHeaderFooterEnabled": False,
+        "isLandscapeEnabled": True
+    }
+
+    options = ChromeOptions()
+    options.binary_location = chrome_path
+    options.add_argument("--start-maximized")
+    options.add_argument('--window-size=1920,1080')
+    options.add_argument(f"user-data-dir={user_data_path}")
+    # options.add_argument("--disable-infobars")
+    # options.add_argument("--disable-extensions")
+    # options.add_argument("--disable-popup-blocking")
+    options.add_argument("--headless")
+    options.add_argument('--enable-print-browser')
+    options.add_experimental_option("prefs", {
+        "printing.print_preview_sticky_settings.appState": json.dumps(print_settings),
+        "savefile.default_directory": download_path,  # Change default directory for downloads
+        "download.default_directory": download_path,  # Change default directory for downloads
+        "download.prompt_for_download": False,  # To auto download the file
+        "download.directory_upgrade": True,
+        "profile.default_content_setting_values.automatic_downloads": 1,
+        "safebrowsing.enabled": True
+    })
+    options.add_argument("--kiosk-printing")
+
+    driver = Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    driver.get(website)
+    # driver.execute_script("window.print();")
+    data = driver.execute_cdp_cmd("Page.printToPDF", print_settings)
+    with open(os.path.join(download_path, "Google.pdf"), 'wb') as file:
+        file.write(base64.b64decode(data['data']))
+    # time.sleep(30)
+    if exists(os.path.join(download_path, "Google.pdf")):
+        print("YAY!")
+    else:
+        print(":(")
 
 
-
-letter_list = []
-for pdf in os.listdir(penpal_path):
-    if pdf.endswith(".pdf"):
-        pdf_path = os.path.join(penpal_path, pdf)
-        check = PdfReader(pdf_path).Info
-        for key,value in check.items():
-            if key == "/Letter" or key == "/Penpal":
-                print(key, value)
-                if key == "/Letter":
-                    # value = int(re.search("\((\d*)\)", value).group(1))
-                    letter_list.append(int(value))
-print(sorted(letter_list))
-# for pdf in glob.glob(penpal_path, "*.pdf"):
-#     print(pdf)
-#     print("work")
+if __name__ == '__main__':
+    main()
