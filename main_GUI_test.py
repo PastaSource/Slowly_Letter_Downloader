@@ -47,6 +47,7 @@ next_button_xpath = "//button[@class='slick-arrow slick-next']"
 back_button_xpath = "//a[@class='no-underline link py-2 px-2 ml-n2 col-pixel-width-50 flip active']"
 penpal_xpath = "//div[@class='col-9 pt-2']"
 penpals_xpath = "//h6[@class='col pl-0 pr-0 mt-1 mb-0 text-truncate ']"  # Used to create list of all penpals
+popup_xpath = "//button[@class='Toastify__close-button Toastify__close-button--warning']"
 
 chrome_running = False
 
@@ -73,8 +74,9 @@ class App(customtkinter.CTk):
     FRAME_RIGHT_PROGRESS_ID = None
     FRAME_RIGHT_LOADING_ID = None
 
+    colour_scheme_path = os.path.join(dir_path, "yellow.json")
     customtkinter.set_appearance_mode("System")  # Modes: "System" (standard), "Dark", "Light"
-    customtkinter.set_default_color_theme("blue")  # Themes: "blue" (standard), "green", "dark-blue"
+    customtkinter.set_default_color_theme(colour_scheme_path)  # Themes: "blue" (standard), "green", "dark-blue"
 
     def __init__(self, count):
         super().__init__()
@@ -342,6 +344,7 @@ class App(customtkinter.CTk):
                 print(f"Creating {session_path}...")
                 os.mkdir(session_path)
 
+        print("Making symlink junctions...")
         # selenium subdirectories
         sessions_sub_dict = {
             "sessions_blob": [os.path.join(cef_cache, "blob_storage"),
@@ -356,9 +359,11 @@ class App(customtkinter.CTk):
 
         for subdirs in sessions_sub_dict.values():
             if exists(subdirs[1]):
+                print(f"{subdirs[1]} already exists")
                 pass
             else:
                 _winapi.CreateJunction(subdirs[0], subdirs[1])
+                print(f"making junction between {subdirs[0]} > {subdirs[1]}")
 
     def penpal_checkboxes(self, penpals, driver):
         # self.check_var_dict = {}
@@ -412,11 +417,11 @@ class App(customtkinter.CTk):
         self.progress_bar_title.place(x=(self.frame_right_width // 2), y=210, anchor="center")
 
         self.progressbar = customtkinter.CTkProgressBar(
-                                                        master=self.frame_right_progress,
-                                                        width=500,
-                                                        height=40,
-                                                        )
-        self.progressbar.set((current_letter/letter_amount))
+            master=self.frame_right_progress,
+            width=500,
+            height=40,
+        )
+        self.progressbar.set((current_letter / letter_amount))
         self.progressbar.place(x=(self.frame_right_width // 2), y=260, anchor="center")
 
         self.progress_bar_footer = customtkinter.CTkLabel(master=self.frame_right_progress,
@@ -465,15 +470,18 @@ class App(customtkinter.CTk):
     def on_closing(self, event=0):
         if self.driver != None:
             self.driver.quit()
+            print("Shutting down selenium driver")
         if self.browser_frame:
             self.browser_frame.destroy()
             self.browser_frame.browser.CloseBrowser(True)
             self.browser_frame.clear_browser_references()
             cef.Shutdown()
+            print("Shutting down cefpython")
         self.browser_frame.destroy()
         self.destroy()
         # sys.exit()
-        os._exit(0) # Won't close properly without this
+        print("Program exit")
+        os._exit(0)  # Won't close properly without this
 
 
 # ============ Integrated Browser Frame Code ============
@@ -558,6 +566,17 @@ def scroll_down(driver):
         pass
 
 
+def popup_check(driver):
+    # popups = False
+    # driver.find_element(By.XPATH, popup_xpath)
+    popup = driver.find_elements(By.XPATH, popup_xpath)
+    if len(popup) >= 1:
+        popup.click()
+        print("Popup closed!!!")
+    else:
+        print("No popups detected, phew!")
+
+
 def check_for_photos(driver):
     if len(driver.find_elements(By.XPATH, dot_xpath)) > 0:
         return True
@@ -591,7 +610,7 @@ def make_pdf(driver, letter_count, penpal_dir, penpal):
 
     # Prints letter as PDF with name "SLOWLY.pdf" in download_path
     print(f"Printing letter {letter_count}")
-    driver.execute_script("window.print()")
+    driver.execute_script("window.print();")
     time.sleep(2)
 
     # Moves PDF into penpal_dir and renames it to pdf_name
@@ -655,6 +674,7 @@ def available_penpals(driver):
     penpals = driver.find_elements(By.XPATH, penpals_xpath)
     return penpals
 
+
 def penpal_select(driver, chosen_penpal_int, chosen_penpal_name, available_penpals):
     chosen_penpal = available_penpals[chosen_penpal_int]
     chosen_penpal.click()
@@ -703,10 +723,9 @@ def load_and_print(driver, penpal):
     current_letter_int = len(letters)  # tracks which letter is currently being processed
     amount_letters = current_letter_int  # amount of letters available to download
 
-
     for index, letter in enumerate(range(0, amount_letters)):
         # print(letter)
-        app.set_progress_bar(amount_letters, (index+1), penpal)
+        app.set_progress_bar(amount_letters, (index + 1), penpal)
         if current_letter_int in existing_letters:
             print("Letter already exists! \nSkipping...")
             current_letter_int -= 1
@@ -738,8 +757,11 @@ def open_chrome():
 
     options = ChromeOptions()
     options.binary_location = chrome_path
+    options.add_argument("--start-maximized")
+    options.add_argument('--window-size=1920,1080')
     options.add_argument(f"user-data-dir={user_data_path}")
-    # options.add_argument("--headless")
+    options.add_argument("--headless")
+    options.add_argument('--enable-print-browser')
     options.add_experimental_option("prefs", {
         "printing.print_preview_sticky_settings.appState": json.dumps(print_settings),
         "savefile.default_directory": download_path,  # Change default directory for downloads
@@ -789,21 +811,15 @@ def chrome_main(driver):
     # create new function in app class that receives the penpals list and then have that function send that list to
     # the checkbutton for loop
     # print(penpals_list)
+    popup_check(driver)
     app.penpal_checkboxes(penpals_list, driver)
     # gui(penpals_list)
 
 
 def main():
-    # penpals_list = []
-    # app = App(penpals_list)
     print("opening GUI")
     app.mainloop()
-    # if app.current_frame_state() == "init":
-    #     print("YAY!")
-    # else:
-    #     print(":(")
-    # gui(penpals_list)
-    if chrome_running:
+    if chrome_running:  # Will probably remove at some point
         driver = quit_chrome()
         driver.quit()
     else:
@@ -815,6 +831,4 @@ def main():
 if __name__ == '__main__':
     penpals_list = []
     app = App(penpals_list)
-    # app.protocol("WM_DELETE_WINDOW", app.on_closing)
-    # self.protocol("WM_DELETE_WINDOW", self.on_closing)
     main()
