@@ -2,11 +2,16 @@ import base64
 import re
 import os
 from os.path import exists
-import shutil
-from distutils.dir_util import copy_tree
+# import shutil
+# from distutils.dir_util import copy_tree
 import _winapi
 import json
 import time
+# import wget
+import urllib.request
+# from pyunpack import Archive
+# import pyunpack
+import py7zr
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.common.by import By
@@ -23,7 +28,9 @@ import sys
 # Paths
 dir_path = os.getcwd()
 download_path = os.path.join(dir_path, "letters")
-chrome_path = os.path.join(dir_path, "chromium\\app\\Chrome-bin\\chrome.exe")
+# chrome_path = os.path.join(dir_path, "chromium\\app\\Chrome-bin\\chrome.exe")
+chrome_executable_path = os.path.join(dir_path, "Chrome-bin\\chrome.exe")
+chrome_sync_path = os.path.join(dir_path, "chrome.sync.7z")
 user_data_path = os.path.join(dir_path, "sessions")
 cef_cache = os.path.join(dir_path, "cef_cache")
 
@@ -144,6 +151,9 @@ class App(customtkinter.CTk):
         # Frames loading penpals
         self.frame_right_loading = customtkinter.CTkFrame(master=self.frame_right)
 
+        # Frames downloading chrome
+        self.frame_right_download_chrome = customtkinter.CTkFrame(master=self.frame_right)
+
         # ============ frame_top ============
         self.app_title = customtkinter.CTkLabel(master=self.frame_top, text="Slowly Letter Downloader",
                                                 text_font=(self.typewriter_font, -50))
@@ -261,25 +271,29 @@ class App(customtkinter.CTk):
         # Integrated browser
         # dir_path = os.getcwd()
         # cache = os.path.join(dir_path, "cef_cache")
-        settings = {"cache_path": cef_cache,
-                    "auto_zooming": "-1.0"}  # "cache_path": cache,
-        cef.Initialize(settings=settings)  # Add settings
+        self.cef_settings = {
+            'locales_dir_path': os.path.join(dir_path, "cefpython3\\locales"),
+            'resources_dir_path': os.path.join(dir_path, "cefpython3"),
+            'browser_subprocess_path': os.path.join(dir_path, "cefpython3\\subprocess.exe"),
+            'log_file': os.path.join(dir_path, "cefpython3\\debug.log"),
+            "cache_path": cef_cache,
+            "auto_zooming": "-1.0"
+        }
+        cef.Initialize(settings=self.cef_settings)  # Add settings
         self.browser_frame = BrowserFrame(self.frame_right_browser)
         self.browser_frame.pack(fill="both", expand=1, anchor="e", side="left")
 
-        # Progress bar
-        # self.frame_right_progress_idle()
-        self.progress_bar_title = customtkinter.CTkLabel(master=self.frame_right_progress, text="Select penpal(s)",
+        # Download letters progress bar
+        self.progress_bar_title = customtkinter.CTkLabel(master=self.frame_right_progress,
+                                                         text="Select penpal(s)",
                                                          text_font=("Roboto Medium", -30))
         self.progress_bar_title.place(x=(self.frame_right_width // 2), y=260, anchor="center")
 
-        # self.progressbar = customtkinter.CTkProgressBar(master=self.frame_right_progress, width=500, height=40)
-        # self.progressbar.place(x=(self.frame_right_width // 2), y=260, anchor="center")
-        #
-        # self.progress_bar_footer = customtkinter.CTkLabel(master=self.frame_right_progress,
-        #                                                   text="Letter 5O out of 1OO",
-        #                                                   text_font=("Roboto Medium", -25))
-        # self.progress_bar_footer.place(x=(self.frame_right_width // 2), y=310, anchor="center")
+        # Download Chrome progress bar
+        # self.progress_bar_download_chrome = customtkinter.CTkLabel(master=self.frame_right_download_chrome,
+        #                                                  text="Downloading Chrome...",
+        #                                                  text_font=("Roboto Medium", -30))
+        # self.progress_bar_download_chrome.place(x=(self.frame_right_width // 2), y=260, anchor="center")
 
         # Loading penpals screen
         self.loading_title = customtkinter.CTkLabel(master=self.frame_right_loading,
@@ -318,11 +332,17 @@ class App(customtkinter.CTk):
         self.browser_frame.browser.CloseBrowser(True)
         cef.Shutdown()
         self.frame_right_browser.forget()
+        if exists(chrome_executable_path):
+            pass
+        else:
+            self.download_chrome()
+
         self.frame_right_loading.pack(expand=1, fill="both")
         self.frame_right.update()
         self.cache_cef_to_selenium()
         # penpals = ["test1", "test2", "test3"]
         # self.penpal_checkboxes(penpals)
+
         self.open_selenium()
 
     def cache_cef_to_selenium(self):
@@ -414,6 +434,11 @@ class App(customtkinter.CTk):
 
     def run_button_event(self):
         print("run button pressed")
+        if exists(download_path):
+            print("Letter path already exists")
+        else:
+            print("Letter path not found\nCreating path...")
+            os.mkdir(download_path)
         penpal_xpath_list = available_penpals(self.driver)
         for chosen_penpal_index in self.check_var_dict.keys():
             if self.check_var_dict[chosen_penpal_index].get() == 1:
@@ -462,6 +487,7 @@ class App(customtkinter.CTk):
     def not_logged_in(self):
         self.frame_right_loading.forget()
         self.frame_right_browser.pack(expand=1, fill="both")
+        cef.Initialize(settings=self.cef_settings)
         self.frame_right.update()
 
     def switch_to_progress(self):
@@ -479,6 +505,57 @@ class App(customtkinter.CTk):
 
     # def change_appearance_mode(self, new_appearance_mode):
     #     customtkinter.set_appearance_mode(new_appearance_mode)
+
+    def download_chrome_progress(self):
+        self.progress_bar_download_chrome_title = customtkinter.CTkLabel(master=self.frame_right_download_chrome,
+                                                         text="Downloading Chrome...",
+                                                         text_font=("Roboto Medium", -30))
+        self.progress_bar_download_chrome_title.place(x=(self.frame_right_width // 2), y=210, anchor="center")
+
+        # self.progress_bar_chrome = customtkinter.CTkProgressBar(
+        #     master=self.frame_right_download_chrome,
+        #     width=500,
+        #     height=40,
+        # )
+        #
+        # self.progress_bar_chrome.set(round((current / total), 3) * 10)
+        # print(round((current / total), 3) * 10)
+        # self.progress_bar_chrome.place(x=(self.frame_right_width // 2), y=260, anchor="center")
+
+        self.progress_bar_footer = customtkinter.CTkLabel(master=self.frame_right_download_chrome,
+                                                          text="This will only happen once",
+                                                          text_font=("Roboto Medium", -25))
+        self.progress_bar_footer.place(x=(self.frame_right_width // 2), y=310, anchor="center")
+        self.frame_right.update()
+
+    def download_chrome(self):
+        self.frame_right_loading.forget()
+        self.frame_right_download_chrome.pack(expand=1, fill="both")
+        if exists(chrome_executable_path):
+            pass
+        else:
+            self.download_chrome_progress()
+            if exists(chrome_sync_path):
+                # Archive(chrome_sync_path).extractall(dir_path)
+                with py7zr.SevenZipFile(chrome_sync_path, mode='r') as archive:
+                    archive.extractall(path=dir_path)
+                os.remove(chrome_sync_path)
+            else:
+                # wget.download(
+                #     'https://github.com/Hibbiki/chromium-win64/releases/download/v105.0.5195.102-r856/chrome.sync.7z',
+                #     dir_path,
+                #     bar=self.download_chrome_progress
+                # )
+
+                urllib.request.urlretrieve(
+                    'https://github.com/Hibbiki/chromium-win64/releases/download/v105.0.5195.102-r856/chrome.sync.7z',
+                    'chrome.sync.7z'
+                )
+                # pyunpack.Archive(chrome_sync_path).extractall(dir_path)
+                with py7zr.SevenZipFile(chrome_sync_path, mode='r') as archive:
+                    archive.extractall(path=dir_path)
+            os.remove(chrome_sync_path)
+        self.frame_right_download_chrome.forget()
 
     def on_closing(self, event=0):
         if self.driver != None:
@@ -759,8 +836,14 @@ def load_and_print(driver, penpal):
 
 
 def open_chrome():
+    # if exists(chrome_executable_path):
+    #     pass
+    # else:
+    #     os.mkdir(chrome_executable_path)
+    app.download_chrome()
+
     options = ChromeOptions()
-    options.binary_location = chrome_path
+    options.binary_location = chrome_executable_path
     options.add_argument("--start-maximized")
     options.add_argument('--window-size=1920,1080')
     options.add_argument(f"user-data-dir={user_data_path}")

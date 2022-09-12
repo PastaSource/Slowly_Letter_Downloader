@@ -1,71 +1,75 @@
-import base64
+import cefpython3
 import os
 from os.path import exists
-import json
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver import Chrome, ChromeOptions
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from pdfminer.pdfpage import PDFPage
-from pdfminer.pdfpage import PDFParser
-from pdfminer.pdfpage import PDFDocument
+import wget
+import sys
+from pyunpack import Archive
+import pyunpack
+import shutil
+import urllib.request
+import py7zr
 
-# Paths
+pyunpack.Archive
+
+# dir_temp = tempfile.gettempdir()
+# files = []
+# for i in os.listdir(dir_temp):
+#     if os.path.isdir(os.path.join(dir_temp,i)) and '_MEI' in i:
+#         files.append(i)
+# dir_temp = dir_temp + str(files[0])
+# dir_temp = os.path.join(dir_temp, str(files[0]))
+# dir_temp_locale = os.path.join(dir_temp, 'locales')
+# dir_temp_subprocess = os.path.join(dir_temp_subprocess, 'subprocess.exe')
+#
+# print dir_temp
+# dir_temp = dir_temp.replace("\\", "\\\\")
+# print dir_temp
+# print dir_temp_locale
+# dir_temp_locale = dir_temp_locale.replace("\\", "\\\\")
+# print dir_temp_locale
+# dir_temp_supbprocess = dir_temp_subprocess.replace("\\", "\\\\")
+# print dir_temp_subprocess
+
+# def bar_progress(current, total, width=80):
+#     # progress_message = "Downloading: %d%% [%d / %d] bytes" % (current / total * 100, current, total)
+#     progress_message = round((current / total), 2)
+#     # Don't use print() as it will print in new line every time.
+#     # sys.stdout.write("\r" + progress_message)
+#     # sys.stdout.flush()
+#     print(progress_message)
+#
+#
 dir_path = os.getcwd()
-download_path = os.path.join(dir_path, "letters")
-chrome_path = os.path.join(dir_path, "chromium\\app\\Chrome-bin\\chrome.exe")
-user_data_path = os.path.join(dir_path, "sessions")
+# chrome_root_path = os.path.join(dir_path, "chrome_test")
+chrome_executable_path = os.path.join(dir_path, "Chrome-bin\\chrome.exe")
+chrome_sync_path = os.path.join(dir_path, "chrome.sync.7z")
+#
+# # if exists(chrome_root_path):
+# #     pass
+# # else:
+# #     os.mkdir(chrome_root_path)
+#
+# if exists(chrome_executable_path):
+#     pass
+# else:
+#     if exists(chrome_sync_path):
+#         Archive(chrome_sync_path).extractall(dir_path)
+#     else:
+#         wget.download(
+#             'https://github.com/Hibbiki/chromium-win64/releases/download/v105.0.5195.102-r856/chrome.sync.7z',
+#             dir_path,
+#             bar=bar_progress
+#         )
+#         Archive(chrome_sync_path).extractall(dir_path)
+#     # shutil.rmtree(chrome_sync_path)
+#     os.remove(chrome_sync_path)
+link = "https://github.com/Hibbiki/chromium-win64/releases/download/v105.0.5195.102-r856/chrome.sync.7z"
+file_name = "chrome.sync.7z"
 
-website = "https://www.google.com/"
-
-
-def main():
-    print_settings = {
-        "recentDestinations": [{
-            "id": "Save as PDF",
-            "origin": "local",
-            "account": "",
-        }],
-        "selectedDestinationId": "Save as PDF",
-        "version": 2,
-        "isHeaderFooterEnabled": False,
-        "isLandscapeEnabled": True
-    }
-
-    options = ChromeOptions()
-    options.binary_location = chrome_path
-    options.add_argument("--start-maximized")
-    options.add_argument('--window-size=1920,1080')
-    options.add_argument(f"user-data-dir={user_data_path}")
-    # options.add_argument("--disable-infobars")
-    # options.add_argument("--disable-extensions")
-    # options.add_argument("--disable-popup-blocking")
-    options.add_argument("--headless")
-    options.add_argument('--enable-print-browser')
-    options.add_experimental_option("prefs", {
-        "printing.print_preview_sticky_settings.appState": json.dumps(print_settings),
-        "savefile.default_directory": download_path,  # Change default directory for downloads
-        "download.default_directory": download_path,  # Change default directory for downloads
-        "download.prompt_for_download": False,  # To auto download the file
-        "download.directory_upgrade": True,
-        "profile.default_content_setting_values.automatic_downloads": 1,
-        "safebrowsing.enabled": True
-    })
-    options.add_argument("--kiosk-printing")
-
-    driver = Chrome(service=Service(ChromeDriverManager().install()), options=options)
-    driver.get(website)
-    # driver.execute_script("window.print();")
-    data = driver.execute_cdp_cmd("Page.printToPDF", print_settings)
-    with open(os.path.join(download_path, "Google.pdf"), 'wb') as file:
-        file.write(base64.b64decode(data['data']))
-    # time.sleep(30)
-    if exists(os.path.join(download_path, "Google.pdf")):
-        print("YAY!")
-    else:
-        print(":(")
+def download_from_anon():
+    urllib.request.urlretrieve(link, file_name)
+    archive = py7zr.SevenZipFile(chrome_sync_path, mode='r')
+    archive.extractall(path=dir_path)
 
 
-if __name__ == '__main__':
-    main()
+download_from_anon()
