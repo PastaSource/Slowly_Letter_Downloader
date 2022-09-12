@@ -41,10 +41,10 @@ python main.py
 ```
 If you're using the Windows executable, just open main.exe.
 
-Once opened scan the QR code from the integrated browser using the Slowly app on your phone, and click "Load Penpals".
-If this is your first time launching the program you will have to wait whilst it downloads Chrome, this may take a while depending on your internet connection.
-When your penpals have loaded, select the ones you wish to download the letters from and click the "Run" button.
-Downloaded letters can be found within the root directory, alongside the main.exe file, in a folder called "Letters".
+ - Once opened scan the QR code from the integrated browser using the Slowly app on your phone, and click "Load Penpals".
+ - If this is your first time launching the program you will have to wait whilst it downloads Chrome, this may take a while depending on your internet connection.
+ - When your penpals have loaded, select the ones you wish to download the letters from and click the "Run" button.
+ - Downloaded letters can be found within the root directory, alongside the main.exe file, in a folder called "Letters".
 
 
 ## Contributing
