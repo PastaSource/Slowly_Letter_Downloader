@@ -2,15 +2,11 @@ import base64
 import re
 import os
 from os.path import exists
-# import shutil
-# from distutils.dir_util import copy_tree
+import winreg
 import _winapi
 import json
 import time
-# import wget
 import urllib.request
-# from pyunpack import Archive
-# import pyunpack
 import py7zr
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
@@ -24,15 +20,46 @@ import customtkinter
 import tkinter as tk
 import pyglet
 import sys
+import logging
+from datetime import datetime
+import ctypes
+import inspect
 
 # Paths
 dir_path = os.getcwd()
+log_path = os.path.join(dir_path, "logs")
 download_path = os.path.join(dir_path, "letters")
 # chrome_path = os.path.join(dir_path, "chromium\\app\\Chrome-bin\\chrome.exe")
 chrome_executable_path = os.path.join(dir_path, "Chrome-bin\\chrome.exe")
 chrome_sync_path = os.path.join(dir_path, "chrome.sync.7z")
 user_data_path = os.path.join(dir_path, "sessions")
 cef_cache = os.path.join(dir_path, "cef_cache")
+
+# Logger setup
+if exists(log_path):
+    pass
+else:
+    os.mkdir(log_path)
+
+now = datetime.now()
+log_name_format = now.strftime("%Y.%m.%d_%H.%M.%S.log")
+log_name = f"SLD_{log_name_format}"
+
+log_file = os.path.join(log_path, log_name)
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+formatter = logging.Formatter('%(levelname)s:%(name)s:%(message)s')
+
+file_handler = logging.FileHandler(log_file)
+file_handler.setFormatter(formatter)
+
+stream_handler = logging.StreamHandler()
+stream_handler.setFormatter(formatter)
+
+logger.addHandler(file_handler)
+logger.addHandler(stream_handler)
 
 # URLs
 website = 'https://web.slowly.app/'
@@ -49,7 +76,7 @@ id_regex = 'object .*\.(.*)>'
 
 # xpath
 xpath = "//div[@class='col-6 col-xl-4 mb-3']"  # Outer HTML
-signature_xpath = "//div[@class='media-body mx-3 mt-2']"  # Finds name and date printed on letter
+signature_xpath = "//div[@class='media-body mx-3 mt-2']"  # Finds name and date logger.infoed on letter
 dot_xpath = "//ul[@class='slick-dots']"
 next_button_xpath = "//button[@class='slick-arrow slick-next']"
 back_button_xpath = "//a[@class='no-underline link py-2 px-2 ml-n2 col-pixel-width-50 flip active']"
@@ -100,10 +127,16 @@ class App(customtkinter.CTk):
 
     def __init__(self, count):
         super().__init__()
+        # self.tk.call('tk', 'scaling', 3.0)
+        # self.call('tk', 'scaling', 3.0)
+        # ctypes.windll.shcore.SetProcessDpiAwareness(2)
+
         self.browser_frame = None
         self.penpals = []
         self.check_var_dict = {}
         self.driver = None
+        self.dpi = self.winfo_fpixels('1i')
+        logger.info(f"DPI = {self.dpi}")
 
         self.title("Slowly Letter Downloader")
         self.geometry(f"{App.WIDTH}x{App.HEIGHT}")
@@ -307,14 +340,14 @@ class App(customtkinter.CTk):
         App.FRAME_RIGHT_PROGRESS_ID = self.frame_right_progress.winfo_name()
         App.FRAME_RIGHT_LOADING_ID = self.frame_right_loading.winfo_name()
 
-    #     self.print_ids()
-    #     print(self.frame_right.pack_slaves())
+    #     self.logger.info_ids()
+    #     logger.info(self.frame_right.pack_slaves())
     #
-    # def print_ids(self):
-    #     print(f"frame_right: {App.FRAME_RIGHT_ID}")
-    #     print(f"frame_right_browser: {App.FRAME_RIGHT_BROWSER_ID}")
-    #     print(f"frame_right_progress: {App.FRAME_RIGHT_PROGRESS_ID}")
-    #     print(f"frame_right_loading: {App.FRAME_RIGHT_LOADING_ID}")
+    # def logger.info_ids(self):
+    #     logger.info(f"frame_right: {App.FRAME_RIGHT_ID}")
+    #     logger.info(f"frame_right_browser: {App.FRAME_RIGHT_BROWSER_ID}")
+    #     logger.info(f"frame_right_progress: {App.FRAME_RIGHT_PROGRESS_ID}")
+    #     logger.info(f"frame_right_loading: {App.FRAME_RIGHT_LOADING_ID}")
 
     def get_browser(self):
         if self.browser_frame:
@@ -327,15 +360,15 @@ class App(customtkinter.CTk):
         return None
 
     def load_penpals_button_event(self):
-        # print("load penpals button pressed")
+        # logger.info("load penpals button pressed")
         self.browser_frame.destroy()  # Closes cefpython integrated browser
         self.browser_frame.browser.CloseBrowser(True)
         cef.Shutdown()
         self.frame_right_browser.forget()
-        if exists(chrome_executable_path):
-            pass
-        else:
-            self.download_chrome()
+        # if exists(chrome_executable_path):
+        #     pass
+        # else:
+        #     self.download_chrome()
 
         self.frame_right_loading.pack(expand=1, fill="both")
         self.frame_right.update()
@@ -353,7 +386,7 @@ class App(customtkinter.CTk):
             return "Error, cef_cache folder not found!"
         # Checks for sessions folder and deletes if exists
         # if exists(user_data_path):
-        #     print("selenium sessions exists\ndeleting...")
+        #     logger.info("selenium sessions exists\ndeleting...")
         #     # os.chmod(user_data_path, )
         #     shutil.rmtree(user_data_path, ignore_errors=True)
         # else:
@@ -371,13 +404,13 @@ class App(customtkinter.CTk):
 
         for session_path in sessions_root_dict.values():
             if exists(session_path):
-                print(f"{session_path} already exists")
+                logger.info(f"{session_path} already exists")
                 pass
             else:
-                print(f"Creating {session_path}...")
+                logger.info(f"Creating {session_path}...")
                 os.mkdir(session_path)
 
-        print("Making symlink junctions...")
+        logger.info("Making symlink junctions...")
         # selenium subdirectories
         sessions_sub_dict = {
             "sessions_blob": [os.path.join(cef_cache, "blob_storage"),
@@ -392,19 +425,21 @@ class App(customtkinter.CTk):
 
         for subdirs in sessions_sub_dict.values():
             if exists(subdirs[1]):
-                print(f"{subdirs[1]} already exists")
+                logger.info(f"{subdirs[1]} already exists")
                 pass
             else:
                 _winapi.CreateJunction(subdirs[0], subdirs[1])
-                print(f"making junction between {subdirs[0]} > {subdirs[1]}")
+                logger.info(f"making junction between {subdirs[0]} > {subdirs[1]}")
 
     def penpal_checkboxes(self, penpals, driver):
         # self.check_var_dict = {}
         # Button creation
+        logger.debug("Set self.driver as driver")
         self.driver = driver
         self.penpals = penpals
-        print("loading penpals to GUI...")
-        print(penpals)
+        logger.info("loading penpals to GUI...")
+        # logger.info(penpals)
+        logger.debug("Create checkboxes from penpal list")
         for index, penpal in enumerate(penpals):
             self.check_var_dict[index] = customtkinter.IntVar()
             self.penpal_checkbox = customtkinter.CTkCheckBox(
@@ -414,14 +449,16 @@ class App(customtkinter.CTk):
                 variable=self.check_var_dict[index]
             )
             self.penpal_checkbox.grid(row=(index + 2), column=0, pady=5, padx=20, sticky="nw")
-        # print(self.check_var_dict)
+        # logger.info(self.check_var_dict)
+        logger.debug("Updating frame_left_second_progress")
         self.frame_left_second_progress.update()
+        logger.debug("Initiate switch_to_progress function")
         self.switch_to_progress()
 
     def penpal_checkbox_event(self):
         for chosen_penpal_index in self.check_var_dict.keys():
             if self.check_var_dict[chosen_penpal_index].get() == 1:
-                print(f"{self.penpals[chosen_penpal_index]}")
+                logger.info(f"{self.penpals[chosen_penpal_index]}")
 
     def select_all_button_event(self):
         for chosen_penpal_index in self.check_var_dict.keys():
@@ -430,19 +467,19 @@ class App(customtkinter.CTk):
             if self.check_var_dict[chosen_penpal_index].get() == 0:
                 self.check_var_dict[chosen_penpal_index].set(1)
         self.frame_left.update()
-        print("select all button pressed")
+        logger.info("select all button pressed")
 
     def run_button_event(self):
-        print("run button pressed")
+        logger.info("run button pressed")
         if exists(download_path):
-            print("Letter path already exists")
+            logger.info("Letter path already exists")
         else:
-            print("Letter path not found\nCreating path...")
+            logger.info("Letter path not found\nCreating path...")
             os.mkdir(download_path)
         penpal_xpath_list = available_penpals(self.driver)
         for chosen_penpal_index in self.check_var_dict.keys():
             if self.check_var_dict[chosen_penpal_index].get() == 1:
-                print(f"Loading {self.penpals[chosen_penpal_index]}")
+                logger.info(f"Loading {self.penpals[chosen_penpal_index]}")
                 penpal_select(self.driver, chosen_penpal_index, self.penpals[chosen_penpal_index], penpal_xpath_list)
             else:
                 pass
@@ -481,26 +518,37 @@ class App(customtkinter.CTk):
         self.progress_bar_title.place(x=(self.frame_right_width // 2), y=260, anchor="center")
 
     def open_selenium(self):
-        print("opening selenium")
+        logger.info("opening selenium")
         open_chrome()
 
     def not_logged_in(self):
+        logger.info("Login not detected!")
         self.frame_right_loading.forget()
-        self.frame_right_browser.pack(expand=1, fill="both")
+        logger.debug("Initializing cef integrated browser")
         cef.Initialize(settings=self.cef_settings)
+        logger.debug("Packing frame_right_browser")
+        self.frame_right_browser.pack(expand=1, fill="both")
+        logger.debug("Updating frame_right")
         self.frame_right.update()
+        self.load_penpals_button.wait_variable()
 
     def switch_to_progress(self):
-        print("switch to progress")
+        logger.info("switch to progress")
+        logger.debug("Forget frame_bottom_browser")
         self.frame_bottom_browser.forget()
+        logger.debug("Forget frame_right_loading")
         self.frame_right_loading.forget()
+        logger.debug("Forget frame_left_browser")
         self.frame_left_browser.forget()
+        logger.debug("Packing progress frames")
         self.frame_bottom_progress.pack(anchor="se", side="bottom")
         self.frame_right_progress.pack(expand=1, fill="both")
         self.frame_left_progress.pack(side="left", fill="both")
+        logger.debug("Updating frames left, right, and bottom")
         self.frame_bottom.update()
         self.frame_right.update()
         self.frame_left.update()
+        logger.debug("Initiate run_button.wait_variable()")
         self.run_button.wait_variable()
 
     # def change_appearance_mode(self, new_appearance_mode):
@@ -508,8 +556,8 @@ class App(customtkinter.CTk):
 
     def download_chrome_progress(self):
         self.progress_bar_download_chrome_title = customtkinter.CTkLabel(master=self.frame_right_download_chrome,
-                                                         text="Downloading Chrome...",
-                                                         text_font=("Roboto Medium", -30))
+                                                                         text="Downloading Chrome...",
+                                                                         text_font=("Roboto Medium", -30))
         self.progress_bar_download_chrome_title.place(x=(self.frame_right_width // 2), y=210, anchor="center")
 
         # self.progress_bar_chrome = customtkinter.CTkProgressBar(
@@ -519,7 +567,7 @@ class App(customtkinter.CTk):
         # )
         #
         # self.progress_bar_chrome.set(round((current / total), 3) * 10)
-        # print(round((current / total), 3) * 10)
+        # logger.info(round((current / total), 3) * 10)
         # self.progress_bar_chrome.place(x=(self.frame_right_width // 2), y=260, anchor="center")
 
         self.progress_bar_footer = customtkinter.CTkLabel(master=self.frame_right_download_chrome,
@@ -558,19 +606,20 @@ class App(customtkinter.CTk):
         self.frame_right_download_chrome.forget()
 
     def on_closing(self, event=0):
+        logger.debug("Iniating shutdown sequence")
         if self.driver != None:
             self.driver.quit()
-            print("Shutting down selenium driver")
+            logger.debug("Shutting down selenium driver")
         if self.browser_frame:
             self.browser_frame.destroy()
             self.browser_frame.browser.CloseBrowser(True)
             self.browser_frame.clear_browser_references()
             cef.Shutdown()
-            print("Shutting down cefpython")
+            logger.debug("Shutting down cefpython")
         self.browser_frame.destroy()
         self.destroy()
         # sys.exit()
-        print("Program exit")
+        logger.info("Program exit")
         os._exit(0)  # Won't close properly without this
 
 
@@ -580,7 +629,7 @@ class BrowserFrame(tk.Frame):
     FRAME_RIGHT_WIDTH = (WIDTH - (WIDTH // 3))
 
     def __init__(self, master):
-        print("init")
+        logger.info("init")
         self.closing = False
         self.browser = None
         tk.Frame.__init__(self, master)
@@ -590,7 +639,7 @@ class BrowserFrame(tk.Frame):
         self.focus_set()
 
     def embed_browser(self):
-        print("embed")
+        logger.info("embed")
         window_info = cef.WindowInfo()
         rect = [0, 0, BrowserFrame.FRAME_RIGHT_WIDTH, self.winfo_height()]
         window_info.SetAsChild(self.get_window_handle(), rect)
@@ -602,13 +651,13 @@ class BrowserFrame(tk.Frame):
         # self.close_browser()
 
     # def OnLoadEnd(browser, frame, httpCode):
-    #     print("onload")
+    #     logger.info("onload")
     #     if frame == browser.GetMainFrame():
     #     # if frame == self.browser.GetMainFrame():
-    #         print("Finished loading main frame: %s (http code = %d)"
+    #         logger.info("Finished loading main frame: %s (http code = %d)"
     #               % (frame.GetUrl(), httpCode))
     #     # else:
-    #     #     print("Hello!")
+    #     #     logger.info("Hello!")
 
     def get_window_handle(self):
         if self.winfo_id() > 0:
@@ -641,7 +690,7 @@ def scroll_down(driver):
         page_height = driver.execute_script("return document.body.scrollHeight")
         while True:
             # Scroll down to bottom
-            print("Scrolling...")
+            logger.info("Scrolling...")
             driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
 
             # Wait to load page
@@ -662,9 +711,9 @@ def popup_check(driver):
     popup = driver.find_elements(By.XPATH, popup_xpath)
     if len(popup) >= 1:
         popup.click()
-        print("Popup closed!!!")
+        logger.info("Popup closed!!!")
     else:
-        print("No popups detected, phew!")
+        logger.info("No popups detected, phew!")
 
 
 def check_for_photos(driver):
@@ -696,11 +745,11 @@ def make_pdf(driver, letter_count, penpal_dir, penpal):
     # # Checks if letter already exists in penpal dir, and skips over it
     # if exists(f"{penpal_dir}\\{file}"):
     #     os.remove(f"{penpal_dir}\\{file}")
-    #     # return print("Letter already exists! \nSkipping...") # unnecessary
+    #     # return logger.info("Letter already exists! \nSkipping...") # unnecessary
 
     # Prints letter as PDF with name "SLOWLY.pdf" in download_path
-    print(f"Printing letter {letter_count}")
-    # driver.execute_script("window.print();")
+    logger.info(f"Printing letter {letter_count}")
+    # driver.execute_script("window.logger.info();")
     pdf_data = driver.execute_cdp_cmd("Page.printToPDF", print_settings)
     with open(os.path.join(download_path, penpal_dir, pdf_name), 'wb') as file:
         file.write(base64.b64decode(pdf_data['data']))
@@ -718,9 +767,9 @@ def make_pdf(driver, letter_count, penpal_dir, penpal):
     PdfWriter(f"{penpal_dir}\\{pdf_name}", trailer=data).write()
 
     if exists(f"{penpal_dir}\\{pdf_name}"):
-        print(f"Letter {letter_count} successfully printed!")
+        logger.info(f"Letter {letter_count} successfully printed!")
     else:
-        print(f"Letter {letter_count} failed to print.")
+        logger.info(f"Letter {letter_count} failed to print.")
 
 
 def open_letter(driver, letter_int, letter_count, penpal_dir, penpal):
@@ -733,11 +782,11 @@ def open_letter(driver, letter_int, letter_count, penpal_dir, penpal):
     if photos_exist:
         amount = photo_amount(driver)
         next_button = driver.find_element(By.XPATH, next_button_xpath)
-        print("Loading images...")
+        logger.info("Loading images...")
         for clicker in range(0, amount - 1):
             next_button.click()
             time.sleep(0.5)
-        print("Please allow time for the images to properly load.")
+        logger.info("Please allow time for the images to properly load.")
         time.sleep(5)
     else:
         pass
@@ -746,15 +795,15 @@ def open_letter(driver, letter_int, letter_count, penpal_dir, penpal):
     # whether or not this will confirm if it is loaded or just being displayed, I'm not sure.
     # could use the driver.wait.until method for this (or whatever it is).
     make_pdf(driver, letter_count, penpal_dir, penpal)
-    print("Going back to letters...")
+    logger.info("Going back to letters...")
 
 
 def mk_penpal_dir(penpal):
     penpal_dir = os.path.join(download_path, penpal)
     if exists(penpal_dir):
-        print("Penpal downloaded directory already exists in 'letters' folder.")
+        logger.info("Penpal downloaded directory already exists in 'letters' folder.")
     else:
-        print(f"Making download directory for {penpal}")
+        logger.info(f"Making download directory for {penpal}")
         os.mkdir(penpal_dir)
     return penpal_dir
 
@@ -769,7 +818,9 @@ def available_penpals(driver):
 
 
 def penpal_select(driver, chosen_penpal_int, chosen_penpal_name, available_penpals):
+    logger.info("Selecting penpal")
     chosen_penpal = available_penpals[chosen_penpal_int]
+    logger.info("Clicking penpal")
     chosen_penpal.click()
     driver = driver
     load_and_print(driver, chosen_penpal_name)
@@ -779,18 +830,20 @@ def penpal_select(driver, chosen_penpal_int, chosen_penpal_name, available_penpa
 
 
 def load_and_print(driver, penpal):
+    logger.info("Waiting until current URL matches penpal URL")
     # Wait until URL matches expected friend URL
     while re.search(current_url_regex, driver.current_url).group(2) != "friend":
         pass
-    print("Penpal selected!")
+    logger.info(f"Penpal {penpal} selected!")
 
     # Scroll down to load all letters
     try:
         WebDriverWait(driver, 30).until(
             EC.presence_of_element_located((By.XPATH, xpath)))
-        print("Loading letters")
+        logger.info("Loading letters")
         scroll_down(driver)
     finally:
+        logger.info("Letters loaded!")
         pass
 
     # mkdir with name of penpal
@@ -799,6 +852,7 @@ def load_and_print(driver, penpal):
     penpal_dir = mk_penpal_dir(penpal)
 
     # check penpal name and letter count on PDFs if they currently exist within the penpals directory.
+    logger.info("Checking for existing letters")
     existing_letters = []
     for penpal_file in os.listdir(penpal_dir):
         if penpal_file.endswith(".pdf"):
@@ -810,46 +864,56 @@ def load_and_print(driver, penpal):
                     # int_value = int(value)
                     # int_minus_one = (int_value - 1)
                     existing_letters.append(int(value))
-    # print(existing_letters)
+    # logger.info(existing_letters)
     # find letters and count how many have been sent/received on SLOWLY
     letters = driver.find_elements(By.XPATH, xpath)
     current_letter_int = len(letters)  # tracks which letter is currently being processed
     amount_letters = current_letter_int  # amount of letters available to download
 
+    # Printing process
+    logger.info("Beginning letter printer process")
     for index, letter in enumerate(range(0, amount_letters)):
-        # print(letter)
+        # logger.info(letter)
         app.set_progress_bar(amount_letters, (index + 1), penpal)
         if current_letter_int in existing_letters:
-            print("Letter already exists! \nSkipping...")
+            logger.info(f"Letter {current_letter_int} already exists! Skipping...")
             current_letter_int -= 1
         else:
+            logger.info(f"Opening letter {current_letter_int}")
             open_letter(driver, letter, current_letter_int, penpal_dir, penpal)
+            logger.info(f"Letter {current_letter_int} finished processing")
             current_letter_int -= 1
             back_button = driver.find_element(By.XPATH, back_button_xpath)
             back_button.click()
             time.sleep(2)
     else:
-        print(f"{amount_letters} letters successfully printed!")
+        logger.info(f"{amount_letters} letters successfully printeded!")
     app.frame_right_progress_reset()
     # driver.quit()
     chrome_running = False
 
 
 def open_chrome():
-    # if exists(chrome_executable_path):
-    #     pass
-    # else:
-    #     os.mkdir(chrome_executable_path)
-    app.download_chrome()
-
+    logger.debug("Setting Chrome options")
     options = ChromeOptions()
-    options.binary_location = chrome_executable_path
+    logger.debug("Checking for Chrome installation")
+    try:
+        reg_connection = winreg.ConnectRegistry(None, winreg.HKEY_LOCAL_MACHINE)
+        winreg.OpenKeyEx(reg_connection, r"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\chrome.exe")
+    except Exception as e:
+        logger.debug(f"{e}")
+        logger.info("Initiating Chrome download")
+        app.download_chrome()
+        logger.info("Chrome download process finished")
+        options.binary_location = chrome_executable_path
+    else:
+        logger.info("Chrome installation found")
     options.add_argument("--start-maximized")
     options.add_argument('--window-size=1920,1080')
     options.add_argument(f"user-data-dir={user_data_path}")
     options.add_argument("--headless")
-    options.add_argument('--enable-print-browser')
-    options.add_experimental_option("prefs", {  # May not be needed with new PDF printing implementation
+    options.add_argument('--enable-logger.info-browser')
+    options.add_experimental_option("prefs", {  # May not be needed with new PDF logger.infoing implementation
         "printing.print_preview_sticky_settings.appState": json.dumps(print_settings),
         "savefile.default_directory": download_path,  # Change default directory for downloads
         "download.default_directory": download_path,  # Change default directory for downloads
@@ -860,59 +924,77 @@ def open_chrome():
     })
     options.add_argument("--kiosk-printing")
 
-    driver = Chrome(service=Service(ChromeDriverManager().install()), options=options)
-    driver.get(website)
+    logger.info("Starting selenium")
+    try:
+        logger.info(f"EC path: {os.path.dirname(os.path.abspath(inspect.getsourcefile(EC)))}")
+        logger.info(f"WDW path: {os.path.dirname(os.path.abspath(inspect.getsourcefile(WebDriverWait)))}")
+        logger.info(f"By path: {os.path.dirname(os.path.abspath(inspect.getsourcefile(By)))}")
+        logger.info(f"CDM path: {os.path.dirname(os.path.abspath(inspect.getsourcefile(ChromeDriverManager)))}")
+        logger.info(f"SChrome path: {os.path.dirname(os.path.abspath(inspect.getsourcefile(Chrome)))}")
+        logger.info(f"ChromeO path: {os.path.dirname(os.path.abspath(inspect.getsourcefile(ChromeOptions)))}")
+        driver = Chrome(service=Service(ChromeDriverManager().install()), options=options)
+        logger.info("Opening Slowly")
+        driver.get(website)
+    except Exception as e:
+        logger.critical(e, exc_info=True)
+        app.on_closing()
+
     # wait = WebDriverWait(driver, 30)
     chrome_running = True
     chrome_main(driver)
 
 
 def chrome_main(driver):
+    logger.debug("Attempting to login using selenium")
     attempt = 0
     while driver.current_url != home_url and attempt <= 10:
-        print(f"Load attempt {attempt} failed!")
+        logger.warning(f"Load attempt {attempt} failed!")
         time.sleep(1)
         attempt += 1
     if driver.current_url != home_url:
         driver.close()
-        print("Closing Selenium")
+        logger.warning("Closing Selenium")
         app.not_logged_in()
-        return print("Login not detected\nPlease try again")
+        return logger.warning("Login not detected, please try again")
     else:
         pass
-    print("Successful login detected! \nPlease select a penpal.")
-    # print(driver.current_url)
+    logger.info("Successful login detected! Please select a penpal.")
+    # logger.info(driver.current_url)
     # Why no work?!
     # try:
     #     WebDriverWait(driver, 30).until(
     #         EC.presence_of_element_located((By.XPATH, penpals_xpath)))
     # finally:
     #     pass
+    logger.debug("time.sleep(3)")
     time.sleep(3)  # Bandaid until above is fixed
+    logger.debug("Get list of available penpals via xpath")
     available_penpals = driver.find_elements(By.XPATH, penpals_xpath)
     penpals_list = []
+    logger.debug("For loop to get penpal names")
     for available_penpal in available_penpals:
         penpal = available_penpal.get_attribute('outerHTML')
         penpal_name = re.search(penpals_regex, penpal).group(1)
         penpals_list.append(penpal_name)
     # create new function in app class that receives the penpals list and then have that function send that list to
     # the checkbutton for loop
-    # print(penpals_list)
+    logger.debug("Start popup_check function")
     popup_check(driver)
+    logger.debug("Send penpal list to app.penpal_checkboxes")
     app.penpal_checkboxes(penpals_list, driver)
-    # gui(penpals_list)
 
 
 def main():
-    print("opening GUI")
+    logger.info("opening GUI")
     app.mainloop()
     if chrome_running:  # Will probably remove at some point
-        driver = quit_chrome()
+        logger.info("Closing selenium from main()")
+        driver = quit_chrome()  # might not work
         driver.quit()
     else:
         pass
 
-    print("End of script")
+    logger.info("End of script")
 
 
 if __name__ == '__main__':

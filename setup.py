@@ -34,11 +34,14 @@ cx_Freeze.setup(
                                 "base64",
                                 "re",
                                 "os",
+                                "inspect",
                                 # "exists",
                                 "_winapi",
                                 "json",
                                 "time",
                                 "selenium",
+                                "webdriver_manager",
+                                "tqdm",
                                 "pdfrw",
                                 "cefpython3",
                                 "customtkinter",
@@ -48,6 +51,7 @@ cx_Freeze.setup(
                                 # "pyunpack",
                                 # "patoolib"
                                 "py7zr"
+                                "winreg"
                     ],
                     "include_files": [
                                 "yellow.json",
