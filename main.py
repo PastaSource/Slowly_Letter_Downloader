@@ -4,6 +4,7 @@ import os
 from os.path import exists
 import winreg
 import _winapi
+import win32file
 import json
 import time
 import urllib.request
@@ -24,6 +25,9 @@ import logging
 from datetime import datetime
 import ctypes
 import inspect
+from subprocess import call
+import shutil
+import stat
 
 # Paths
 dir_path = os.getcwd()
@@ -304,15 +308,7 @@ class App(customtkinter.CTk):
         # Integrated browser
         # dir_path = os.getcwd()
         # cache = os.path.join(dir_path, "cef_cache")
-        self.cef_settings = {
-            'locales_dir_path': os.path.join(dir_path, "cefpython3\\locales"),
-            'resources_dir_path': os.path.join(dir_path, "cefpython3"),
-            'browser_subprocess_path': os.path.join(dir_path, "cefpython3\\subprocess.exe"),
-            'log_file': os.path.join(dir_path, "cefpython3\\debug.log"),
-            "cache_path": cef_cache,
-            "auto_zooming": "-1.0"
-        }
-        cef.Initialize(settings=self.cef_settings)  # Add settings
+        self.open_cefpython()
         self.browser_frame = BrowserFrame(self.frame_right_browser)
         self.browser_frame.pack(fill="both", expand=1, anchor="e", side="left")
 
@@ -383,18 +379,14 @@ class App(customtkinter.CTk):
         if exists(cef_cache):
             pass
         else:
+            logger.error("cef_cache folder not found")
             return "Error, cef_cache folder not found!"
-        # Checks for sessions folder and deletes if exists
-        # if exists(user_data_path):
-        #     logger.info("selenium sessions exists\ndeleting...")
-        #     # os.chmod(user_data_path, )
-        #     shutil.rmtree(user_data_path, ignore_errors=True)
-        # else:
-        #     pass
-        # Makes new sessions folder if old one was fully removed
+
         if exists(user_data_path):
+            logger.info(f"{user_data_path} already exists")
             pass
         else:
+            logger.info(f"{user_data_path} not found, creating...")
             os.mkdir(user_data_path)
 
         sessions_root_dict = {
@@ -407,10 +399,9 @@ class App(customtkinter.CTk):
                 logger.info(f"{session_path} already exists")
                 pass
             else:
-                logger.info(f"Creating {session_path}...")
+                logger.info(f"Creating {session_path}")
                 os.mkdir(session_path)
 
-        logger.info("Making symlink junctions...")
         # selenium subdirectories
         sessions_sub_dict = {
             "sessions_blob": [os.path.join(cef_cache, "blob_storage"),
@@ -423,13 +414,63 @@ class App(customtkinter.CTk):
                                       os.path.join(user_data_path, "Default\\Local Storage")]
         }
 
+        logger.info("Making symlink junctions...")
         for subdirs in sessions_sub_dict.values():
+            # junction = self.is_junction(subdirs[1])
+            # print(f"{subdirs[1]} is a junction? {junction}")
             if exists(subdirs[1]):
                 logger.info(f"{subdirs[1]} already exists")
-                pass
+                if self.is_junction(subdirs[1]):
+                    logger.info(f"{subdirs[1]} junction already exists")
+                else:
+                    self.junction_creation(subdirs[0], subdirs[1])
             else:
-                _winapi.CreateJunction(subdirs[0], subdirs[1])
-                logger.info(f"making junction between {subdirs[0]} > {subdirs[1]}")
+                self.junction_creation(subdirs[0], subdirs[1])
+        logger.debug("Finished copying/creating junctions")
+
+    def is_junction(self, path: str) -> bool:
+        try:
+            return bool(os.readlink(path))
+        except OSError:
+            return False
+
+    def junction_creation(self, src, dst):
+        try:
+            _winapi.CreateJunction(src, dst)
+            logger.info(f"making junction between {src} > {dst}")
+        except Exception as e:
+            logger.error(e)
+            try:
+                logger.info("Trying alternate copytree method")
+                try:
+                    self.chmodtree(src)
+                    self.chmodtree(dst)
+                    shutil.rmtree(dst)
+                except Exception as e:
+                    logger.error(e)
+                shutil.copytree(src, dst)
+                logger.info(f"Copying {src} > {dst}")
+            except Exception as e:
+                logger.error(e)
+                # self.on_closing()
+            else:
+                logger.info("File copy attempt successful!!!")
+        else:
+            logger.info("Junction creation attempt successful!!!")
+
+    def chmodtree(self, top):
+        for root, dirs, files in os.walk(top, topdown=False):
+            for name in files:
+                filename = os.path.join(root, name)
+                try:
+                    logger.debug(f"chmoding {filename}")
+                    os.chmod(filename, stat.S_IWUSR)
+                    # os.remove(filename)
+                    # shutil.rmtree(filename)
+                    logger.debug(f"Successfully chmod {filename}")
+                except Exception as e:
+                    logger.error(e)
+
 
     def penpal_checkboxes(self, penpals, driver):
         # self.check_var_dict = {}
@@ -521,11 +562,39 @@ class App(customtkinter.CTk):
         logger.info("opening selenium")
         open_chrome()
 
+    def open_cefpython(self):
+        logger.info("Starting cefpython3")
+        self.cef_settings = {
+            'locales_dir_path': os.path.join(dir_path, "cefpython3\\locales"),
+            'resources_dir_path': os.path.join(dir_path, "cefpython3"),
+            'browser_subprocess_path': os.path.join(dir_path, "cefpython3\\subprocess.exe"),
+            'log_file': os.path.join(dir_path, "cefpython3\\debug.log"),
+            "cache_path": cef_cache,
+            "auto_zooming": "-1.0"
+        }
+        # try:
+        #     # Here as a bandaid until I sort out permission issues
+        #     # Lol "permission issues" could've been  caused by Chromium and Chrome Driver persisting in background
+        #     logger.info("Attempting to chmod cef_cache")
+        #     self.chmodtree(cef_cache)
+        # except Exception as e:
+        #     logger.error(e)
+        # else:
+        #     logger.info("chmod cef_cache successful")
+        try:
+            cef.Initialize(settings=self.cef_settings)  # Add settings
+        except Exception as e:
+            logger.critical(e)
+            self.on_closing()
+        else:
+            logger.info("cefpython successfully initiated")
+
+
     def not_logged_in(self):
         logger.info("Login not detected!")
         self.frame_right_loading.forget()
-        logger.debug("Initializing cef integrated browser")
-        cef.Initialize(settings=self.cef_settings)
+        logger.debug("Calling open_cefpython function")
+        self.open_cefpython()
         logger.debug("Packing frame_right_browser")
         self.frame_right_browser.pack(expand=1, fill="both")
         logger.debug("Updating frame_right")
@@ -615,6 +684,7 @@ class App(customtkinter.CTk):
             self.browser_frame.browser.CloseBrowser(True)
             self.browser_frame.clear_browser_references()
             cef.Shutdown()
+            logger.debug(f"cef WindowInfo: {cef.WindowInfo}")
             logger.debug("Shutting down cefpython")
         self.browser_frame.destroy()
         self.destroy()
@@ -926,12 +996,13 @@ def open_chrome():
 
     logger.info("Starting selenium")
     try:
-        logger.info(f"EC path: {os.path.dirname(os.path.abspath(inspect.getsourcefile(EC)))}")
-        logger.info(f"WDW path: {os.path.dirname(os.path.abspath(inspect.getsourcefile(WebDriverWait)))}")
-        logger.info(f"By path: {os.path.dirname(os.path.abspath(inspect.getsourcefile(By)))}")
-        logger.info(f"CDM path: {os.path.dirname(os.path.abspath(inspect.getsourcefile(ChromeDriverManager)))}")
-        logger.info(f"SChrome path: {os.path.dirname(os.path.abspath(inspect.getsourcefile(Chrome)))}")
-        logger.info(f"ChromeO path: {os.path.dirname(os.path.abspath(inspect.getsourcefile(ChromeOptions)))}")
+        # logger.info(f"EC path: {os.path.dirname(os.path.abspath(inspect.getsourcefile(EC)))}")
+        # logger.info(f"WDW path: {os.path.dirname(os.path.abspath(inspect.getsourcefile(WebDriverWait)))}")
+        # logger.info(f"By path: {os.path.dirname(os.path.abspath(inspect.getsourcefile(By)))}")
+        # logger.info(f"CDM path: {os.path.dirname(os.path.abspath(inspect.getsourcefile(ChromeDriverManager)))}")
+        # logger.info(f"SChrome path: {os.path.dirname(os.path.abspath(inspect.getsourcefile(Chrome)))}")
+        # logger.info(f"ChromeO path: {os.path.dirname(os.path.abspath(inspect.getsourcefile(ChromeOptions)))}")
+        # Had to comment out show_download_progress(resp) from http.py file to stop NoneType error
         driver = Chrome(service=Service(ChromeDriverManager().install()), options=options)
         logger.info("Opening Slowly")
         driver.get(website)

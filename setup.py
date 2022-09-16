@@ -24,44 +24,54 @@ base = None
 if sys.platform == 'win32':
     base = 'Win32GUI'
 
-executables = [cx_Freeze.Executable("main.py", base=base)]
+options = {"build_exe": {
+    "packages": [
+        "base64",
+        "re",
+        "os",
+        "inspect",
+        "_winapi",
+        "json",
+        "time",
+        "selenium",
+        "webdriver_manager",
+        "tqdm",
+        "pdfrw",
+        "cefpython3",
+        "customtkinter",
+        "tkinter",
+        "pyglet",
+        "urllib",
+        "py7zr",
+        # "Brotli", # Needed for py7zr
+        "winreg",
+        "requests",
+        "win32file",
+        "ctypes",
+        "shutil"
+        ],
+    # "path": [
+    #     "C:\\Users\\aaron\\PycharmProjects\\slowly scraper\\venv\\Lib\\site-packages"
+    # ],
+    "include_files": [
+        "yellow.json",
+        "interface",
+        "cefpython3"
+        ]
+    # "replace_paths": [("*", "")]
+    }
+}
+executables = [cx_Freeze.Executable(
+    "main.py",
+    base=base,
+    target_name="SLD.exe"
+    )
+]
 
 cx_Freeze.setup(
-    name = "Slowly_Letter_Downloader",
-    options = {
-                "build_exe": {
-                    "packages": [
-                                "base64",
-                                "re",
-                                "os",
-                                "inspect",
-                                # "exists",
-                                "_winapi",
-                                "json",
-                                "time",
-                                "selenium",
-                                "webdriver_manager",
-                                "tqdm",
-                                "pdfrw",
-                                "cefpython3",
-                                "customtkinter",
-                                "tkinter",
-                                "pyglet",
-                                "urllib",
-                                # "pyunpack",
-                                # "patoolib"
-                                "py7zr"
-                                "winreg"
-                    ],
-                    "include_files": [
-                                "yellow.json",
-                                # "chromium",
-                                "interface",
-                                "cefpython3"
-                    ]
-            }
-        },
-    version = "0.1",
-    description = "Automates the downloading of letters from Slowly",
-    executables = executables
-    )
+    name="Slowly_Letter_Downloader",
+    options=options,
+    version="0.1",
+    description="Automates the downloading of letters from Slowly",
+    executables=executables
+)
