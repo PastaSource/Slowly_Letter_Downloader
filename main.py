@@ -4,7 +4,6 @@ import os
 from os.path import exists
 import winreg
 import _winapi
-import win32file
 import json
 import time
 import urllib.request
@@ -17,17 +16,15 @@ from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver import Chrome, ChromeOptions
 from pdfrw import PdfReader, PdfWriter
 from cefpython3 import cefpython as cef
+import cefpython3
 import customtkinter
 import tkinter as tk
 import pyglet
-import sys
 import logging
 from datetime import datetime
-import ctypes
-import inspect
-from subprocess import call
 import shutil
 import stat
+import inspect
 
 # Paths
 dir_path = os.getcwd()
@@ -38,6 +35,7 @@ chrome_executable_path = os.path.join(dir_path, "Chrome-bin\\chrome.exe")
 chrome_sync_path = os.path.join(dir_path, "chrome.sync.7z")
 user_data_path = os.path.join(dir_path, "sessions")
 cef_cache = os.path.join(dir_path, "cef_cache")
+interface_path = os.path.join(dir_path, "interface")
 
 # Logger setup
 if exists(log_path):
@@ -88,6 +86,11 @@ penpal_xpath = "//div[@class='col-9 pt-2']"
 penpals_xpath = "//h6[@class='col pl-0 pr-0 mt-1 mb-0 text-truncate ']"  # Used to create list of all penpals
 popup_xpath = "//button[@class='Toastify__close-button Toastify__close-button--warning']"
 
+# colors
+slowly_bg = ("#F7F7F7", "#1b1d24")
+slowly_fg = ("#FFFFFF", "#2b2f39")
+slowly_yellow = ("#F9C32B", "#f9c32b")
+
 print_settings = {
     "recentDestinations": [{
         "id": "Save as PDF",
@@ -125,7 +128,7 @@ class App(customtkinter.CTk):
     FRAME_RIGHT_PROGRESS_ID = None
     FRAME_RIGHT_LOADING_ID = None
 
-    colour_scheme_path = os.path.join(dir_path, "yellow.json")
+    colour_scheme_path = os.path.join(interface_path, "yellow.json")
     customtkinter.set_appearance_mode("System")  # Modes: "System" (standard), "Dark", "Light"
     customtkinter.set_default_color_theme(colour_scheme_path)  # Themes: "blue" (standard), "green", "dark-blue"
 
@@ -145,6 +148,8 @@ class App(customtkinter.CTk):
         self.title("Slowly Letter Downloader")
         self.geometry(f"{App.WIDTH}x{App.HEIGHT}")
         self.protocol("WM_DELETE_WINDOW", self.on_closing)  # call .on_closing() when app gets closed
+        self.iconbitmap(os.path.join(interface_path, "SLD_icon.ico"))
+
         self.count = count
         self.typewriter_font = "Mom´sTypewriter"
 
@@ -155,11 +160,14 @@ class App(customtkinter.CTk):
         self.frame_left_scrollbar_width = 20
         self.frame_left_width = (App.WIDTH // 3)
         self.frame_right_width = (App.WIDTH - self.frame_left_width - self.frame_left_scrollbar_width)
+        # May no longer need to have scrollbar_width subtracted since it's integrated into progress frame now ^^^
 
         self.frame_top = customtkinter.CTkFrame(master=self, height=100)
         self.frame_top.pack(anchor="n", fill="x")
 
-        self.frame_left = customtkinter.CTkFrame(master=self, width=self.frame_left_width)
+        self.frame_left = customtkinter.CTkFrame(master=self,
+                                                 width=self.frame_left_width
+                                                 )
         self.frame_left.pack(side="left", fill="both")
 
         self.frame_bottom = customtkinter.CTkFrame(master=self, width=self.frame_right_width, height=100)
@@ -168,6 +176,10 @@ class App(customtkinter.CTk):
         self.frame_right = customtkinter.CTkFrame(master=self, width=self.frame_right_width)
         self.frame_right.pack(anchor="e", expand=1, fill="both")
 
+        # Penpals title frame
+        self.frame_left_penpals_title = customtkinter.CTkFrame(master=self.frame_left)
+        self.frame_left_penpals_title.pack(side="top", expand=0, anchor="n")
+
         # Frames integrated browser
         self.frame_right_browser = customtkinter.CTkFrame(master=self.frame_right)
         self.frame_right_browser.pack(expand=1, fill="both")
@@ -175,7 +187,11 @@ class App(customtkinter.CTk):
         self.frame_bottom_browser = customtkinter.CTkFrame(master=self.frame_bottom)
         self.frame_bottom_browser.pack(anchor="se", side="bottom")
 
-        self.frame_left_browser = customtkinter.CTkFrame(master=self.frame_left)
+        self.frame_left_browser = customtkinter.CTkFrame(master=self.frame_left,
+                                                         width=self.frame_left_width,
+                                                         fg_color=slowly_fg,
+                                                         bg_color=slowly_fg
+                                                         )
         self.frame_left_browser.pack(side="left", fill="both")
 
         # Frames progress bar
@@ -183,7 +199,11 @@ class App(customtkinter.CTk):
 
         self.frame_bottom_progress = customtkinter.CTkFrame(master=self.frame_bottom)
 
-        self.frame_left_progress = customtkinter.CTkFrame(master=self.frame_left)
+        self.frame_left_progress = customtkinter.CTkFrame(master=self.frame_left,
+                                                          width=self.frame_left_width - self.frame_left_scrollbar_width,
+                                                          fg_color=slowly_fg,
+                                                          bg_color=slowly_fg
+                                                          )
 
         # Frames loading penpals
         self.frame_right_loading = customtkinter.CTkFrame(master=self.frame_right)
@@ -193,7 +213,7 @@ class App(customtkinter.CTk):
 
         # ============ frame_top ============
         self.app_title = customtkinter.CTkLabel(master=self.frame_top, text="Slowly Letter Downloader",
-                                                text_font=(self.typewriter_font, -50))
+                                                text_font=(self.typewriter_font, -45))
         self.app_title.place(x=(App.WIDTH / 2), y=50, anchor="center")
 
         # ============ frame_bottom ============
@@ -205,27 +225,44 @@ class App(customtkinter.CTk):
         #                                           command=self.run_button_event)
         # self.run_button.grid(row=8, column=2, columnspan=1, pady=20, padx=20, sticky="se")
 
+        self.appearance_selector = customtkinter.CTkOptionMenu(master=self.frame_bottom_browser,
+                                                               values=["System", "Light", "Dark"],
+                                                               command=self.change_appearance_mode,
+                                                               text_font=(self.typewriter_font, -20),
+                                                               text_color="#000000")
+        self.appearance_selector.grid(row=8, column=0, columnspan=1, pady=20, padx=20, sticky="w")
+
+
         self.load_penpals_button = customtkinter.CTkButton(master=self.frame_bottom_browser,
-                                                           text="Load Penpals", text_font=(self.typewriter_font, -20),
-                                                           border_width=2,  # <- custom border_width
-                                                           fg_color=None,  # <- no fg_color
+                                                           text="Load Penpals",
+                                                           text_font=(self.typewriter_font, -20),
+                                                           text_color="#000000",
+                                                           fg_color=slowly_yellow,
                                                            command=self.load_penpals_button_event)
-        self.load_penpals_button.grid(row=8, column=1, columnspan=1, pady=20, padx=20, sticky="sw")
+        self.load_penpals_button.grid(row=8, column=1, columnspan=1, pady=20, padx=20, sticky="e")
 
         # Progress bar frame
         self.run_button = customtkinter.CTkButton(master=self.frame_bottom_progress,
-                                                  text="Run", text_font=(self.typewriter_font, -20),
-                                                  border_width=2,  # <- custom border_width
-                                                  fg_color=None,  # <- no fg_color
+                                                  text="Run",
+                                                  text_font=(self.typewriter_font, -20),
+                                                  text_color="#000000",
+                                                  fg_color=slowly_yellow,
                                                   command=self.run_button_event)
         self.run_button.grid(row=8, column=2, columnspan=1, pady=20, padx=20, sticky="se")
 
-        self.load_penpals_button = customtkinter.CTkButton(master=self.frame_bottom_progress,
+        self.select_all_button = customtkinter.CTkButton(master=self.frame_bottom_progress,
                                                            text="Select All", text_font=(self.typewriter_font, -20),
-                                                           border_width=2,  # <- custom border_width
-                                                           fg_color=None,  # <- no fg_color
+                                                           text_color="#000000",
+                                                           fg_color=slowly_yellow,
                                                            command=self.select_all_button_event)
-        self.load_penpals_button.grid(row=8, column=1, columnspan=1, pady=20, padx=20, sticky="sw")
+        self.select_all_button.grid(row=8, column=1, columnspan=1, pady=20, padx=20, sticky="sw")
+
+        self.appearance_selector = customtkinter.CTkOptionMenu(master=self.frame_bottom_progress,
+                                                               values=["System", "Light", "Dark"],
+                                                               command=self.change_appearance_mode,
+                                                               text_font=(self.typewriter_font, -20),
+                                                               text_color="#000000")
+        self.appearance_selector.grid(row=8, column=0, columnspan=1, pady=20, padx=20, sticky="w")
 
         # self.check_button = customtkinter.CTkButton(master=self.frame_bottom_progress,
         #                                             text="Show state",
@@ -236,78 +273,55 @@ class App(customtkinter.CTk):
         # self.check_button.grid(row=8, column=0, columnspan=1, pady=20, padx=20, sticky="sw")
 
         # ============ frame_left ============
+        # Penpal label
+        self.penpal_label = customtkinter.CTkLabel(master=self.frame_left_penpals_title,
+                                                           text="Penpals",
+                                                           text_font=(self.typewriter_font, -30),
+                                                           width=(self.frame_left_width - 20))
+        self.penpal_label.grid(row=1, column=0, pady=12, padx=12)
         # Integrated browser frame
-        # Create canvas
-        self.canvas_left_browser = customtkinter.CTkCanvas(
-            master=self.frame_left_browser, width=self.frame_left_width)
-        self.canvas_left_browser.pack(side="left", fill="y")
 
-        # Create second frame_left
-        self.frame_left_second_browser = customtkinter.CTkFrame(
-            master=self.canvas_left_browser, width=self.frame_left_width)
 
-        # Create window inside canvas
-        self.canvas_left_browser.create_window((0, 0), window=self.frame_left_second_browser, anchor="nw")
-
-        # configure grid layout (1x11)
-        self.frame_left_second_browser.grid_rowconfigure(0, minsize=10)  # empty row with minsize as spacing
-        self.frame_left_second_browser.grid_rowconfigure(len(count) + 2, weight=1)  # empty row as spacing
-
-        self.penpal_label_progress = customtkinter.CTkLabel(master=self.frame_left_second_browser,
-                                                            text="Penpals",
-                                                            text_font=(self.typewriter_font, -30),
-                                                            width=(self.frame_left_width - 20))
-        self.penpal_label_progress.grid(row=1, column=0, pady=10, padx=10)
 
         # Progress bar frame
         # Create canvas
         self.canvas_left_progress = customtkinter.CTkCanvas(master=self.frame_left_progress,
-                                                            width=self.frame_left_width)
-        self.canvas_left_progress.pack(side="left", fill="y")
+                                                            width=self.frame_left_width -
+                                                                  self.frame_left_scrollbar_width)
+        self.canvas_left_progress.pack(side="left", fill="both")
 
         # Create scrollbar
         self.left_scrollbar_progress = customtkinter.CTkScrollbar(
-            master=self.frame_left_progress, orientation="vertical", command=self.canvas_left_progress.yview, width=20)
+            master=self.frame_left_progress,
+            orientation="vertical",
+            command=self.canvas_left_progress.yview,
+            width=self.frame_left_scrollbar_width)
         self.left_scrollbar_progress.pack(side="left", fill="y")
 
         # Configure canvas
         self.canvas_left_progress.configure(yscrollcommand=self.left_scrollbar_progress.set)
+
         self.canvas_left_progress.bind(
             "<Configure>", lambda e: self.canvas_left_progress.configure(
-                scrollregion=self.canvas_left_progress.bbox("all")))
+                scrollregion=self.scroll_bbox()))
 
         # Create second frame_left
         self.frame_left_second_progress = customtkinter.CTkFrame(
-            master=self.canvas_left_progress, width=self.frame_left_width)
+            master=self.canvas_left_progress,
+            width=self.frame_left_width - self.frame_left_scrollbar_width,
+            fg_color=slowly_fg,
+            bg_color=slowly_fg
+        )
 
         # Create window inside canvas
-        self.canvas_left_progress.create_window((0, 0), window=self.frame_left_second_progress, anchor="nw")
+        self.canvas_left_progress.create_window((0, 0), window=self.frame_left_second_progress, anchor="nw", width=self.frame_left_width)
 
         # configure grid layout (1x11)
         self.frame_left_second_progress.grid_rowconfigure(0, minsize=10)  # empty row with minsize as spacing
         self.frame_left_second_progress.grid_rowconfigure(len(count) + 2, weight=1)  # empty row as spacing
 
-        self.penpal_label_browser = customtkinter.CTkLabel(master=self.frame_left_second_progress,
-                                                           text="Penpals",
-                                                           text_font=(self.typewriter_font, -30),
-                                                           width=(self.frame_left_width - 20))
-        self.penpal_label_browser.grid(row=1, column=0, pady=10, padx=10)
-
-        # # Button creation
-        # for index, penpal in enumerate(self.count):
-        #     # check_var = customtkinter.IntVar()
-        #     self.check_var_dict[index] = customtkinter.IntVar()
-        #     self.penpal_checkbox = customtkinter.CTkCheckBox(
-        #         master=self.frame_left_second_progress,
-        #         text=f"{penpal}",
-        #         text_font=("Roboto Medium", -20),
-        #         variable=self.check_var_dict[index])
-        #     self.penpal_checkbox.grid(row=(index + 2), column=0, pady=5, padx=20, sticky="nw")
-
         # ============ frame_right ============
         # Integrated browser
-        # dir_path = os.getcwd()
-        # cache = os.path.join(dir_path, "cef_cache")
         self.open_cefpython()
         self.browser_frame = BrowserFrame(self.frame_right_browser)
         self.browser_frame.pack(fill="both", expand=1, anchor="e", side="left")
@@ -344,6 +358,19 @@ class App(customtkinter.CTk):
     #     logger.info(f"frame_right_browser: {App.FRAME_RIGHT_BROWSER_ID}")
     #     logger.info(f"frame_right_progress: {App.FRAME_RIGHT_PROGRESS_ID}")
     #     logger.info(f"frame_right_loading: {App.FRAME_RIGHT_LOADING_ID}")
+
+    def change_appearance_mode(self, new_appearance_mode):
+        customtkinter.set_appearance_mode(new_appearance_mode)
+
+    def scroll_bbox(self):
+        '''Modifies self.canvas_left_progress.bbox to remove 2 white pixels at the top and bottom
+        of the penpal checkbox list'''
+        self.bbox = self.canvas_left_progress.bbox("all")
+        self.bbox_mod = list(self.bbox)
+        self.bbox_mod[1] = 2
+        self.bbox_mod[3] = self.bbox_mod[3] - 2
+        # logger.critical(f"BBOX VALUE: {self.bbox_mod}")
+        return self.bbox_mod
 
     def get_browser(self):
         if self.browser_frame:
@@ -488,6 +515,8 @@ class App(customtkinter.CTk):
                 text=f"{penpal}",
                 text_font=("Roboto Medium", -20),
                 variable=self.check_var_dict[index]
+                # bg_color=slowly_fg,
+                # fg_color=slowly_fg
             )
             self.penpal_checkbox.grid(row=(index + 2), column=0, pady=5, padx=20, sticky="nw")
         # logger.info(self.check_var_dict)
@@ -564,17 +593,19 @@ class App(customtkinter.CTk):
 
     def open_cefpython(self):
         logger.info("Starting cefpython3")
+        cefpython3_path = os.path.dirname(os.path.abspath(inspect.getsourcefile(cefpython3)))
+        logger.info(f"cefpython3 path: {cefpython3_path}")
         self.cef_settings = {
-            'locales_dir_path': os.path.join(dir_path, "cefpython3\\locales"),
-            'resources_dir_path': os.path.join(dir_path, "cefpython3"),
-            'browser_subprocess_path': os.path.join(dir_path, "cefpython3\\subprocess.exe"),
-            'log_file': os.path.join(dir_path, "cefpython3\\debug.log"),
+            'locales_dir_path': os.path.join(cefpython3_path, "locales"),
+            'resources_dir_path': os.path.join(cefpython3_path),
+            'browser_subprocess_path': os.path.join(cefpython3_path, "subprocess.exe"),
+            'log_file': os.path.join(cefpython3_path, "debug.log"),
             "cache_path": cef_cache,
             "auto_zooming": "-1.0"
         }
         # try:
         #     # Here as a bandaid until I sort out permission issues
-        #     # Lol "permission issues" could've been  caused by Chromium and Chrome Driver persisting in background
+        #     # Lol "permission issues" could've \been  caused by Chromium and Chrome Driver persisting in background
         #     logger.info("Attempting to chmod cef_cache")
         #     self.chmodtree(cef_cache)
         # except Exception as e:
