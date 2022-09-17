@@ -19,6 +19,9 @@ import customtkinter
 import tkinter as tk
 import pyglet
 
+dir_path = os.getcwd()
+interface_path = os.path.join(dir_path, "interface")
+
 base = None
 
 if sys.platform == 'win32':
@@ -46,17 +49,17 @@ options = {"build_exe": {
         # "Brotli", # Needed for py7zr
         "winreg",
         "requests",
-        "win32file",
-        "ctypes",
-        "shutil"
+        "shutil",
+        "stat",
+        "inspect"
         ],
     # "path": [
     #     "C:\\Users\\aaron\\PycharmProjects\\slowly scraper\\venv\\Lib\\site-packages"
     # ],
     "include_files": [
-        "yellow.json",
-        "interface",
-        "cefpython3"
+        # "yellow.json",
+        "interface"
+        # "cefpython3"
         ]
     # "replace_paths": [("*", "")]
     }
@@ -64,13 +67,15 @@ options = {"build_exe": {
 executables = [cx_Freeze.Executable(
     "main.py",
     base=base,
-    target_name="SLD.exe"
+    target_name="SLD.exe",
+    icon=os.path.join(interface_path, "SLD_icon.ico")
     )
 ]
 
 cx_Freeze.setup(
-    name="Slowly_Letter_Downloader",
+    name="Slowly Letter Downloader",
     options=options,
+    author="PastaSource",
     version="0.1",
     description="Automates the downloading of letters from Slowly",
     executables=executables
