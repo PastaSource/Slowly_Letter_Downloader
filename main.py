@@ -178,6 +178,7 @@ class App(customtkinter.CTk):
         # ctypes.windll.shcore.SetProcessDpiAwareness(2)
 
         self.browser_frame = None
+        self.reporthook_counter = 0 # reporthook for download progress
         self.penpals = []
         self.check_var_dict = {}
         self.driver = None
@@ -502,11 +503,18 @@ class App(customtkinter.CTk):
 
     def load_penpals_button_event(self):
         # logger.info("load penpals button pressed")
-        self.browser_frame.destroy()  # Closes cefpython integrated browser
-        logger.info("Shutting down cefpython3 integrated browser")
-        self.browser_frame.browser.CloseBrowser(True)
-        cef.Shutdown()
-        self.frame_right_browser.forget()
+        try:
+            self.browser_frame.destroy()  # Closes cefpython integrated browser
+            logger.info("Shutting down cefpython3 integrated browser")
+            self.browser_frame.browser.CloseBrowser(True)
+            # cef.QuitMessageLoop()
+            # MAY BE IMPOSSIBLE TO START UP AGAIN ONCE SHUTDOWN
+            cef.Shutdown()
+            self.frame_right_browser.forget()
+        except Exception as e:
+            logger.critical(e)
+        else:
+            logger.debug("successfully shut down cefpython")
         # if exists(chrome_executable_path):
         #     pass
         # else:
@@ -776,7 +784,7 @@ class App(customtkinter.CTk):
     def open_cefpython(self):
         logger.info("Starting cefpython3")
         cefpython3_path = os.path.dirname(os.path.abspath(inspect.getsourcefile(cefpython3)))
-        logger.info(f"cefpython3 path: {cefpython3_path}")
+        logger.debug(f"cefpython3 path: {cefpython3_path}")
         self.cef_settings = {
             'locales_dir_path': os.path.join(cefpython3_path, "locales"),
             'resources_dir_path': os.path.join(cefpython3_path),
@@ -844,63 +852,110 @@ class App(customtkinter.CTk):
             text="Downloading Chrome...",
             text_font=("Roboto Medium", -30)
         )
-        self.progress_bar_download_chrome_title.place(x=(self.frame_right_width // 2), y=210, anchor="center")
-
-        # self.progress_bar_chrome = customtkinter.CTkProgressBar(
-        #     master=self.frame_right_download_chrome,
-        #     width=500,
-        #     height=40,
-        # )
-        #
-        # self.progress_bar_chrome.set(round((current / total), 3) * 10)
-        # logger.info(round((current / total), 3) * 10)
-        # self.progress_bar_chrome.place(x=(self.frame_right_width // 2), y=260, anchor="center")
+        # self.progress_bar_download_chrome_title.place(x=(self.frame_right_width // 2), y=210, anchor="center")
+        self.progress_bar_download_chrome_title.grid(
+            row=1,
+            column=0,
+            sticky="nsew"
+        )
 
         self.progress_bar_footer = customtkinter.CTkLabel(
             master=self.frame_right_download_chrome,
             text="This will only happen once",
             text_font=("Roboto Medium", -25)
         )
-        self.progress_bar_footer.place(x=(self.frame_right_width // 2), y=310, anchor="center")
+        # self.progress_bar_footer.place(x=(self.frame_right_width // 2), y=310, anchor="center")
+        self.progress_bar_footer.grid(
+            row=3,
+            column=0,
+            sticky="nsew"
+        )
         self.frame_right.update()
 
-    def download_chrome(self):
-        try:
-            import py7zr
-        except Exception as e:
-            logger.critical(e)
-            os._exit(0)
-        else:
-            logger.debug("Successfully imported py7zr")
+    def download_chrome_progress_bar(self, downloaded, total_size):
+        self.progress_bar_chrome = customtkinter.CTkLabel(
+            master=self.frame_right_download_chrome,
+            text=f"{int(downloaded / 1024 / 1024)}mb / {int(total_size / 1024 / 1024)}mb",
+            text_font=("Arial", -25)
+        )
+        self.progress_bar_chrome.grid(
+            row=2,
+            column=0,
+            sticky="nsew"
+        )
+        # Not the most elegant solution, but it'll do for now
 
+        # self.frame_right.update()
+
+
+    def reporthook(self, count, block_size, total_size):
+        # percent = int(count * block_size * 100 / total_size)
+        current = 0
+        downloaded = count * block_size
+        downloaded_mb = int(downloaded / 1024 / 1024)
+        if downloaded_mb > self.reporthook_counter:
+            # print("extra mb")
+            self.reporthook_counter = downloaded_mb
+            self.download_chrome_progress_bar(downloaded, total_size)
+        else:
+            pass
+
+
+    def download_chrome(self):
         if exists(chrome_executable_path):
             pass
         else:
             self.frame_right_loading.forget()
+
             self.frame_right_download_chrome.pack(expand=1, fill="both")
+            self.frame_right_download_chrome.grid_rowconfigure((0,4), weight=1)
+            self.frame_right_download_chrome.grid_columnconfigure(0, weight=1)
 
             self.download_chrome_progress()
-            if exists(chrome_sync_path):
-                # Archive(chrome_sync_path).extractall(dir_path)
-                with py7zr.SevenZipFile(chrome_sync_path, mode='r') as archive:
-                    archive.extractall(path=dir_path)
-                os.remove(chrome_sync_path)
+            try:
+                import py7zr
+            except Exception as e:
+                logger.critical(e)
+                os._exit(0)
             else:
-                # wget.download(
-                #     'https://github.com/Hibbiki/chromium-win64/releases/download/v105.0.5195.102-r856/chrome.sync.7z',
-                #     dir_path,
-                #     bar=self.download_chrome_progress
-                # )
+                logger.debug("Successfully imported py7zr")
+            try:
+                os.remove(chrome_sync_path)
+            except Exception as e:
+                logger.error(e)
 
-                urllib.request.urlretrieve(
-                    'https://github.com/Hibbiki/chromium-win64/releases/download/v105.0.5195.102-r856/chrome.sync.7z',
-                    'chrome.sync.7z'
-                )
-                # pyunpack.Archive(chrome_sync_path).extractall(dir_path)
-                with py7zr.SevenZipFile(chrome_sync_path, mode='r') as archive:
-                    archive.extractall(path=dir_path)
+            # self.progress_bar_chrome = customtkinter.CTkProgressBar(
+            #     master=self.frame_right_download_chrome,
+            #     width=500,
+            #     height=40,
+            # )
+            # Progress bar might be slowing things down?
+
+            self.progress_bar_chrome = customtkinter.CTkLabel(
+                master=self.frame_right_download_chrome,
+                text="0 / 0",
+                text_font=("Arial", -25)
+            )
+            # self.progress_bar_chrome.place(x=(self.frame_right_width // 2), y=260, anchor="center")
+            self.progress_bar_chrome.grid(
+                row=2,
+                column=0,
+                sticky="nsew",
+            )
+
+
+            urllib.request.urlretrieve(
+                'https://github.com/Hibbiki/chromium-win64/releases/download/v105.0.5195.102-r856/chrome.sync.7z',
+                'chrome.sync.7z',
+                self.reporthook
+            )
+            # pyunpack.Archive(chrome_sync_path).extractall(dir_path)
+            with py7zr.SevenZipFile(chrome_sync_path, mode='r') as archive:
+                archive.extractall(path=dir_path)
             os.remove(chrome_sync_path)
-        self.frame_right_download_chrome.forget()
+            self.frame_right_download_chrome.forget()
+            # Back to loading! We did it! We downloaded Chrome! Woohoo!
+            self.frame_right_loading.pack(expand=1, fill="both")
 
     def on_closing(self, event=0):
         logger.debug("Iniating shutdown sequence")
@@ -1291,7 +1346,7 @@ def chrome_main(driver):
     attempt = 0
     while driver.current_url != home_url and attempt <= 10:
         logger.warning(f"Load attempt {attempt} failed!")
-        # time.sleep(1)
+        time.sleep(1)
         # tk.Tk.after(1000, logger.debug("after(1000) complete"))
         attempt += 1
     if driver.current_url != home_url:
