@@ -1,41 +1,20 @@
-import base64
-import re
+import logging
 import os
 from os.path import exists
-import winreg
-import _winapi
-import json
-import time
-import urllib.request
-import py7zr
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.wait import WebDriverWait
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver import Chrome, ChromeOptions
-from pdfrw import PdfReader, PdfWriter
-from cefpython3 import cefpython as cef
-import cefpython3
-import customtkinter
-import tkinter as tk
-import pyglet
-import logging
 from datetime import datetime
-import shutil
-import stat
-import inspect
 
 # Paths
 dir_path = os.getcwd()
 log_path = os.path.join(dir_path, "logs")
 download_path = os.path.join(dir_path, "letters")
-# chrome_path = os.path.join(dir_path, "chromium\\app\\Chrome-bin\\chrome.exe")
 chrome_executable_path = os.path.join(dir_path, "Chrome-bin\\chrome.exe")
 chrome_sync_path = os.path.join(dir_path, "chrome.sync.7z")
 user_data_path = os.path.join(dir_path, "sessions")
 cef_cache = os.path.join(dir_path, "cef_cache")
 interface_path = os.path.join(dir_path, "interface")
+venv_path = os.path.join(dir_path, "venv\\Lib\\site-packages")
+compiled_path = os.path.join(dir_path, "lib")
+settings_button_image_path = os.path.join(interface_path, "settings_button.png")
 
 # Logger setup
 if exists(log_path):
@@ -63,6 +42,57 @@ stream_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 logger.addHandler(stream_handler)
 
+def show_folder_layout():
+    folder_layout = os.listdir(dir_path)
+    logger.debug("Root path items:")
+    for item in folder_layout:
+        logger.debug(os.path.join(dir_path, item))
+        logger.debug("Module path items:")
+    try:
+        module_layout = os.listdir(compiled_path)
+        module_path = compiled_path
+    except:
+        try:
+            module_layout = os.listdir(venv_path)
+            module_path = venv_path
+        except Exception as e:
+            logger.critical(e)
+            return logger.critical("No module path could be found!!!")
+    for item in module_layout:
+        logger.debug(os.path.join(module_path, item))
+
+try:
+    import base64
+    import re
+    import winreg
+    import _winapi
+    import json
+    import time
+    import urllib.request
+    from selenium.webdriver.support import expected_conditions as EC
+    from selenium.webdriver.support.wait import WebDriverWait
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.chrome.service import Service
+    from webdriver_manager.chrome import ChromeDriverManager
+    from selenium.webdriver import Chrome, ChromeOptions
+    from subprocess import CREATE_NO_WINDOW
+    from pdfrw import PdfReader, PdfWriter
+    from cefpython3 import cefpython as cef
+    import cefpython3
+    import customtkinter
+    import tkinter as tk
+    from PIL import ImageTk, Image
+    import pyglet
+    import shutil
+    import stat
+    import inspect
+    import threading
+except Exception as e:
+    logger.critical(e)
+    show_folder_layout()
+    os._exit(1)
+else:
+    logger.debug("Modules successfully imported!")
 # URLs
 website = 'https://web.slowly.app/'
 home_url = 'https://web.slowly.app/home'
@@ -105,6 +135,15 @@ print_settings = {
 
 chrome_running = False
 
+def chrome_installed():
+    try:
+        reg_connection = winreg.ConnectRegistry(None, winreg.HKEY_LOCAL_MACHINE)
+        winreg.OpenKeyEx(reg_connection, r"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\chrome.exe")
+    except:
+        return False
+    else:
+        logger.debug("Chrome installation successfully found")
+        return True
 
 # GUI class
 class App(customtkinter.CTk):
@@ -139,6 +178,7 @@ class App(customtkinter.CTk):
         # ctypes.windll.shcore.SetProcessDpiAwareness(2)
 
         self.browser_frame = None
+        self.reporthook_counter = 0 # reporthook for download progress
         self.penpals = []
         self.check_var_dict = {}
         self.driver = None
@@ -155,139 +195,193 @@ class App(customtkinter.CTk):
 
         # ============ create frames ============
         # Configure frame layout
-        self.grid_columnconfigure(1, weight=1)
-        self.grid_rowconfigure(0, weight=1)
+        # self.grid_columnconfigure(1, weight=1)
+        # self.grid_rowconfigure(0, weight=1)
         self.frame_left_scrollbar_width = 20
         self.frame_left_width = (App.WIDTH // 3)
-        self.frame_right_width = (App.WIDTH - self.frame_left_width - self.frame_left_scrollbar_width)
-        # May no longer need to have scrollbar_width subtracted since it's integrated into progress frame now ^^^
+        self.frame_right_width = (App.WIDTH - self.frame_left_width)
 
-        self.frame_top = customtkinter.CTkFrame(master=self, height=100)
+        self.frame_top = customtkinter.CTkFrame(
+            master=self,
+            height=100
+        )
         self.frame_top.pack(anchor="n", fill="x")
 
-        self.frame_left = customtkinter.CTkFrame(master=self,
-                                                 width=self.frame_left_width
-                                                 )
+        self.frame_left = customtkinter.CTkFrame(
+            master=self,
+            width=self.frame_left_width
+        )
         self.frame_left.pack(side="left", fill="both")
 
-        self.frame_bottom = customtkinter.CTkFrame(master=self, width=self.frame_right_width, height=100)
-        self.frame_bottom.pack(anchor="se", side="bottom")
+        self.frame_bottom = customtkinter.CTkFrame(
+            master=self,
+            width=self.frame_right_width,
+            height=100,
+            fg_color=slowly_bg,
+            bg_color=slowly_bg
 
-        self.frame_right = customtkinter.CTkFrame(master=self, width=self.frame_right_width)
+        )
+        self.frame_bottom.pack(side="bottom", fill="x")
+
+        self.frame_right = customtkinter.CTkFrame(
+            master=self,
+            width=self.frame_right_width
+        )
         self.frame_right.pack(anchor="e", expand=1, fill="both")
 
         # Penpals title frame
-        self.frame_left_penpals_title = customtkinter.CTkFrame(master=self.frame_left)
+        self.frame_left_penpals_title = customtkinter.CTkFrame(
+            master=self.frame_left
+        )
         self.frame_left_penpals_title.pack(side="top", expand=0, anchor="n")
 
         # Frames integrated browser
-        self.frame_right_browser = customtkinter.CTkFrame(master=self.frame_right)
+        self.frame_right_browser = customtkinter.CTkFrame(
+            master=self.frame_right,
+            width=self.frame_right_width
+        )
         self.frame_right_browser.pack(expand=1, fill="both")
 
-        self.frame_bottom_browser = customtkinter.CTkFrame(master=self.frame_bottom)
-        self.frame_bottom_browser.pack(anchor="se", side="bottom")
+        self.frame_bottom_browser = customtkinter.CTkFrame(
+            master=self.frame_bottom,
+            fg_color=slowly_bg,
+            bg_color=slowly_bg
+        )
+        self.frame_bottom_browser.pack(anchor="s", side="bottom")
 
-        self.frame_left_browser = customtkinter.CTkFrame(master=self.frame_left,
-                                                         width=self.frame_left_width,
-                                                         fg_color=slowly_fg,
-                                                         bg_color=slowly_fg
-                                                         )
+        self.frame_left_browser = customtkinter.CTkFrame(
+            master=self.frame_left,
+            width=self.frame_left_width,
+            fg_color=slowly_fg,
+            bg_color=slowly_fg
+        )
         self.frame_left_browser.pack(side="left", fill="both")
 
         # Frames progress bar
         self.frame_right_progress = customtkinter.CTkFrame(master=self.frame_right)
 
-        self.frame_bottom_progress = customtkinter.CTkFrame(master=self.frame_bottom)
+        self.frame_bottom_progress_l = customtkinter.CTkFrame(
+            master=self.frame_bottom,
+            fg_color=slowly_bg,
+            bg_color=slowly_bg
+        )
 
-        self.frame_left_progress = customtkinter.CTkFrame(master=self.frame_left,
-                                                          width=self.frame_left_width - self.frame_left_scrollbar_width,
-                                                          fg_color=slowly_fg,
-                                                          bg_color=slowly_fg
-                                                          )
+        self.frame_bottom_progress_r = customtkinter.CTkFrame(
+            master=self.frame_bottom,
+            fg_color=slowly_bg,
+            bg_color=slowly_bg
+        )
+
+        self.frame_left_progress = customtkinter.CTkFrame(
+            master=self.frame_left,
+            width=self.frame_left_width - self.frame_left_scrollbar_width,
+            fg_color=slowly_fg,
+            bg_color=slowly_fg
+        )
 
         # Frames loading penpals
-        self.frame_right_loading = customtkinter.CTkFrame(master=self.frame_right)
+        self.frame_right_loading = customtkinter.CTkFrame(
+            master=self.frame_right
+        )
 
         # Frames downloading chrome
-        self.frame_right_download_chrome = customtkinter.CTkFrame(master=self.frame_right)
+        self.frame_right_download_chrome = customtkinter.CTkFrame(
+            master=self.frame_right
+        )
 
         # ============ frame_top ============
-        self.app_title = customtkinter.CTkLabel(master=self.frame_top, text="Slowly Letter Downloader",
-                                                text_font=(self.typewriter_font, -45))
-        self.app_title.place(x=(App.WIDTH / 2), y=50, anchor="center")
+        self.app_title = customtkinter.CTkLabel(
+            master=self.frame_top,
+            text="Slowly Letter Downloader",
+            text_font=(self.typewriter_font, -45)
+        )
+        # self.app_title.place(x=(App.WIDTH / 2), y=50, anchor="center")
+        self.app_title.pack(anchor="center", pady=25)
 
         # ============ frame_bottom ============
+        # self.frame_bottom.grid_columnconfigure(0, weight=3)
+        # self.frame_bottom.grid_columnconfigure(1, weight=3)
+        #
+        # self.frame_bottom_browser.grid_columnconfigure(0, weight=0)
+        # self.frame_bottom_browser.grid_columnconfigure(1, weight=1)
+        # self.frame_bottom_progress.grid_columnconfigure(0, weight=0)
+        # self.frame_bottom_progress.grid_columnconfigure(1, weight=2)
+        # self.frame_bottom_progress.grid_columnconfigure(2, weight=2)
         # Integrated browser frame
-        # self.run_button = customtkinter.CTkButton(master=self.frame_bottom_browser,
-        #                                           text="Run", text_font=(self.typewriter_font, -20),
-        #                                           border_width=2,  # <- custom border_width
-        #                                           fg_color=None,  # <- no fg_color
-        #                                           command=self.run_button_event)
-        # self.run_button.grid(row=8, column=2, columnspan=1, pady=20, padx=20, sticky="se")
+        logger.debug(f"settings_button.png exists? {exists(settings_button_image_path)}")
+        self.settings_button_image_open = Image.open(settings_button_image_path)
+        self.settings_button_image = ImageTk.PhotoImage(self.settings_button_image_open)
 
-        self.appearance_selector = customtkinter.CTkOptionMenu(master=self.frame_bottom_browser,
-                                                               values=["System", "Light", "Dark"],
-                                                               command=self.change_appearance_mode,
-                                                               text_font=(self.typewriter_font, -20),
-                                                               text_color="#000000")
-        self.appearance_selector.grid(row=8, column=0, columnspan=1, pady=20, padx=20, sticky="w")
+        self.open_settings_button = customtkinter.CTkButton(
+            master=self.frame_bottom_browser,
+            image=self.settings_button_image,
+            text="",
+            fg_color=("#F7F7F7", "#1b1d24"),
+            height=30,
+            width=30,
+            command=self.settings_popup
+        )
+        self.open_settings_button.grid(row=0, column=0, pady=20, padx=20, sticky="w")
 
-
-        self.load_penpals_button = customtkinter.CTkButton(master=self.frame_bottom_browser,
-                                                           text="Load Penpals",
-                                                           text_font=(self.typewriter_font, -20),
-                                                           text_color="#000000",
-                                                           fg_color=slowly_yellow,
-                                                           command=self.load_penpals_button_event)
-        self.load_penpals_button.grid(row=8, column=1, columnspan=1, pady=20, padx=20, sticky="e")
+        # self.load_penpals_button = customtkinter.CTkButton(
+        #     master=self.frame_bottom_browser,
+        #     text="Load Penpals",
+        #     text_font=(self.typewriter_font, -20),
+        #     text_color="#000000",
+        #     fg_color=slowly_yellow,
+        #     command=self.load_penpals_button_event
+        # )
+        # self.load_penpals_button.grid(row=8, column=1, columnspan=1, pady=20, padx=20, sticky="e")
 
         # Progress bar frame
-        self.run_button = customtkinter.CTkButton(master=self.frame_bottom_progress,
-                                                  text="Run",
-                                                  text_font=(self.typewriter_font, -20),
-                                                  text_color="#000000",
-                                                  fg_color=slowly_yellow,
-                                                  command=self.run_button_event)
-        self.run_button.grid(row=8, column=2, columnspan=1, pady=20, padx=20, sticky="se")
+        self.run_button = customtkinter.CTkButton(
+            master=self.frame_bottom_progress_r,
+            text="Run",
+            text_font=(self.typewriter_font, -20),
+            text_color="#000000",
+            fg_color=slowly_yellow,
+            command=self.run_button_event
+        )
+        self.run_button.grid(row=0, column=2, columnspan=3, pady=20, padx=20, sticky="se")
 
-        self.select_all_button = customtkinter.CTkButton(master=self.frame_bottom_progress,
-                                                           text="Select All", text_font=(self.typewriter_font, -20),
-                                                           text_color="#000000",
-                                                           fg_color=slowly_yellow,
-                                                           command=self.select_all_button_event)
-        self.select_all_button.grid(row=8, column=1, columnspan=1, pady=20, padx=20, sticky="sw")
+        self.select_all_button = customtkinter.CTkButton(
+            master=self.frame_bottom_progress_r,
+            text="Select All", text_font=(self.typewriter_font, -20),
+            text_color="#000000",
+            fg_color=slowly_yellow,
+            command=self.select_all_button_event
+        )
+        self.select_all_button.grid(row=0, column=1, columnspan=1, pady=20, padx=20, sticky="sw")
 
-        self.appearance_selector = customtkinter.CTkOptionMenu(master=self.frame_bottom_progress,
-                                                               values=["System", "Light", "Dark"],
-                                                               command=self.change_appearance_mode,
-                                                               text_font=(self.typewriter_font, -20),
-                                                               text_color="#000000")
-        self.appearance_selector.grid(row=8, column=0, columnspan=1, pady=20, padx=20, sticky="w")
-
-        # self.check_button = customtkinter.CTkButton(master=self.frame_bottom_progress,
-        #                                             text="Show state",
-        #                                             text_font=(self.typewriter_font, -20),
-        #                                             border_width=2,  # <- custom border_width
-        #                                             fg_color=None,  # <- no fg_color
-        #                                             command=self.penpal_checkbox_event)
-        # self.check_button.grid(row=8, column=0, columnspan=1, pady=20, padx=20, sticky="sw")
+        self.open_settings = customtkinter.CTkButton(
+            master=self.frame_bottom_progress_l,
+            image=self.settings_button_image,
+            text="",
+            fg_color=("#F7F7F7", "#1b1d24"),
+            height=30,
+            width=30,
+            command=self.settings_popup
+        )
+        self.open_settings.grid(row=0, column=0, pady=18, padx=20, sticky="w")
+        # self.open_settings.place(x=0, y=0, anchor="center")
 
         # ============ frame_left ============
         # Penpal label
-        self.penpal_label = customtkinter.CTkLabel(master=self.frame_left_penpals_title,
-                                                           text="Penpals",
-                                                           text_font=(self.typewriter_font, -30),
-                                                           width=(self.frame_left_width - 20))
+        self.penpal_label = customtkinter.CTkLabel(
+            master=self.frame_left_penpals_title,
+            text="Penpals",
+            text_font=(self.typewriter_font, -30),
+            width=(self.frame_left_width - 20)
+        )
         self.penpal_label.grid(row=1, column=0, pady=12, padx=12)
         # Integrated browser frame
 
-
-
         # Progress bar frame
         # Create canvas
-        self.canvas_left_progress = customtkinter.CTkCanvas(master=self.frame_left_progress,
-                                                            width=self.frame_left_width -
-                                                                  self.frame_left_scrollbar_width)
+        self.canvas_left_progress = customtkinter.CTkCanvas(
+            master=self.frame_left_progress,
+            width=self.frame_left_width - self.frame_left_scrollbar_width
+        )
         self.canvas_left_progress.pack(side="left", fill="both")
 
         # Create scrollbar
@@ -295,7 +389,8 @@ class App(customtkinter.CTk):
             master=self.frame_left_progress,
             orientation="vertical",
             command=self.canvas_left_progress.yview,
-            width=self.frame_left_scrollbar_width)
+            width=self.frame_left_scrollbar_width
+        )
         self.left_scrollbar_progress.pack(side="left", fill="y")
 
         # Configure canvas
@@ -314,7 +409,12 @@ class App(customtkinter.CTk):
         )
 
         # Create window inside canvas
-        self.canvas_left_progress.create_window((0, 0), window=self.frame_left_second_progress, anchor="nw", width=self.frame_left_width)
+        self.canvas_left_progress.create_window(
+            (0, 0),
+            window=self.frame_left_second_progress,
+            anchor="nw",
+            width=self.frame_left_width
+        )
 
         # configure grid layout (1x11)
         self.frame_left_second_progress.grid_rowconfigure(0, minsize=10)  # empty row with minsize as spacing
@@ -327,9 +427,11 @@ class App(customtkinter.CTk):
         self.browser_frame.pack(fill="both", expand=1, anchor="e", side="left")
 
         # Download letters progress bar
-        self.progress_bar_title = customtkinter.CTkLabel(master=self.frame_right_progress,
-                                                         text="Select penpal(s)",
-                                                         text_font=("Roboto Medium", -30))
+        self.progress_bar_title = customtkinter.CTkLabel(
+            master=self.frame_right_progress,
+            text="Select penpal(s)",
+            text_font=("Roboto Medium", -30)
+        )
         self.progress_bar_title.place(x=(self.frame_right_width // 2), y=260, anchor="center")
 
         # Download Chrome progress bar
@@ -339,9 +441,11 @@ class App(customtkinter.CTk):
         # self.progress_bar_download_chrome.place(x=(self.frame_right_width // 2), y=260, anchor="center")
 
         # Loading penpals screen
-        self.loading_title = customtkinter.CTkLabel(master=self.frame_right_loading,
-                                                    text="Loading penpals\nPlease wait...",
-                                                    text_font=(self.typewriter_font, -30))
+        self.loading_title = customtkinter.CTkLabel(
+            master=self.frame_right_loading,
+            text="Loading penpals\nPlease wait...",
+            text_font=(self.typewriter_font, -30)
+        )
         self.loading_title.place(x=(self.frame_right_width // 2), y=210, anchor="center")
 
         # Set global frame IDs
@@ -350,14 +454,29 @@ class App(customtkinter.CTk):
         App.FRAME_RIGHT_PROGRESS_ID = self.frame_right_progress.winfo_name()
         App.FRAME_RIGHT_LOADING_ID = self.frame_right_loading.winfo_name()
 
-    #     self.logger.info_ids()
-    #     logger.info(self.frame_right.pack_slaves())
-    #
-    # def logger.info_ids(self):
-    #     logger.info(f"frame_right: {App.FRAME_RIGHT_ID}")
-    #     logger.info(f"frame_right_browser: {App.FRAME_RIGHT_BROWSER_ID}")
-    #     logger.info(f"frame_right_progress: {App.FRAME_RIGHT_PROGRESS_ID}")
-    #     logger.info(f"frame_right_loading: {App.FRAME_RIGHT_LOADING_ID}")
+    def settings_popup(self):
+        self.settings_window = customtkinter.CTkToplevel(self)
+        self.settings_window.title("Settings")
+        self.settings_window.geometry("400x200")
+        # self.grid_columnconfigure(1, weight=1)
+
+
+        self.settings_popup_label = customtkinter.CTkLabel(self.settings_window,
+                                                      text="SLD Settings",
+                                                      text_font=(self.typewriter_font, -25))
+        # settings_popup_label.grid(row=1, column=1, columnspan=1, pady=20, padx=20)
+        self.settings_popup_label.pack(anchor="center", side="top", pady=20)
+
+        self.appearance_selector = customtkinter.CTkOptionMenu(
+            master=self.settings_window,
+            values=["System", "Light", "Dark"],
+            command=self.change_appearance_mode,
+            text_font=(self.typewriter_font, -20),
+            text_color="#000000"
+        )
+        # self.appearance_selector.grid(row=2, column=1, columnspan=1, pady=20, padx=20)
+        self.appearance_selector.pack(anchor="center", pady=20)
+
 
     def change_appearance_mode(self, new_appearance_mode):
         customtkinter.set_appearance_mode(new_appearance_mode)
@@ -384,25 +503,35 @@ class App(customtkinter.CTk):
 
     def load_penpals_button_event(self):
         # logger.info("load penpals button pressed")
-        self.browser_frame.destroy()  # Closes cefpython integrated browser
-        self.browser_frame.browser.CloseBrowser(True)
-        cef.Shutdown()
-        self.frame_right_browser.forget()
+        try:
+            self.browser_frame.destroy()  # Closes cefpython integrated browser
+            logger.info("Shutting down cefpython3 integrated browser")
+            self.browser_frame.browser.CloseBrowser(True)
+            # cef.QuitMessageLoop()
+            # MAY BE IMPOSSIBLE TO START UP AGAIN ONCE SHUTDOWN
+            cef.Shutdown()
+            self.frame_right_browser.forget()
+        except Exception as e:
+            logger.critical(e)
+        else:
+            logger.debug("successfully shut down cefpython")
         # if exists(chrome_executable_path):
         #     pass
         # else:
         #     self.download_chrome()
 
+        logger.debug("packing frame_right_loading")
         self.frame_right_loading.pack(expand=1, fill="both")
         self.frame_right.update()
         self.cache_cef_to_selenium()
         # penpals = ["test1", "test2", "test3"]
         # self.penpal_checkboxes(penpals)
-
+        logger.info("calling self.open_selenium function")
         self.open_selenium()
 
     def cache_cef_to_selenium(self):
         # Check that cef_cache exists
+        logger.debug(f"cef_cache = {cef_cache}")
         if exists(cef_cache):
             pass
         else:
@@ -498,7 +627,6 @@ class App(customtkinter.CTk):
                 except Exception as e:
                     logger.error(e)
 
-
     def penpal_checkboxes(self, penpals, driver):
         # self.check_var_dict = {}
         # Button creation
@@ -531,13 +659,50 @@ class App(customtkinter.CTk):
                 logger.info(f"{self.penpals[chosen_penpal_index]}")
 
     def select_all_button_event(self):
+        logger.debug("forgetting 'select_all_button'")
+        self.select_all_button.destroy()
+        logger.debug("gridding 'deselect_all_button'")
+        self.deselect_all_button = customtkinter.CTkButton(
+            master=self.frame_bottom_progress_r,
+            text="Deselect All", text_font=(self.typewriter_font, -20),
+            text_color="#000000",
+            fg_color=slowly_yellow,
+            command=self.deselect_all_button_event
+        )
+        self.deselect_all_button.grid(row=0, column=1, columnspan=1, pady=20, padx=20, sticky="sw")
+        logger.debug("selecting all penpals")
         for chosen_penpal_index in self.check_var_dict.keys():
             if self.check_var_dict[chosen_penpal_index].get() == 1:
                 pass
             if self.check_var_dict[chosen_penpal_index].get() == 0:
                 self.check_var_dict[chosen_penpal_index].set(1)
         self.frame_left.update()
+        self.frame_bottom_progress_r.update()
+        self.frame_bottom.update()
         logger.info("select all button pressed")
+
+    def deselect_all_button_event(self):
+        logger.debug("forgetting 'dselect_all_button'")
+        self.deselect_all_button.destroy()
+        logger.debug("gridding 'select_all_button'")
+        self.select_all_button = customtkinter.CTkButton(
+            master=self.frame_bottom_progress_r,
+            text="Select All", text_font=(self.typewriter_font, -20),
+            text_color="#000000",
+            fg_color=slowly_yellow,
+            command=self.select_all_button_event
+        )
+        self.select_all_button.grid(row=0, column=1, columnspan=1, pady=20, padx=20, sticky="sw")
+        logger.debug("deselecting all penpals")
+        for chosen_penpal_index in self.check_var_dict.keys():
+            if self.check_var_dict[chosen_penpal_index].get() == 1:
+                self.check_var_dict[chosen_penpal_index].set(0)
+            if self.check_var_dict[chosen_penpal_index].get() == 0:
+                pass
+        self.frame_left.update()
+        self.frame_bottom_progress_r.update()
+        self.frame_bottom.update()
+        logger.info("deselect all button pressed")
 
     def run_button_event(self):
         logger.info("run button pressed")
@@ -550,10 +715,16 @@ class App(customtkinter.CTk):
         for chosen_penpal_index in self.check_var_dict.keys():
             if self.check_var_dict[chosen_penpal_index].get() == 1:
                 logger.info(f"Loading {self.penpals[chosen_penpal_index]}")
-                penpal_select(self.driver, chosen_penpal_index, self.penpals[chosen_penpal_index], penpal_xpath_list)
+                # penpal_select(self.driver, chosen_penpal_index, self.penpals[chosen_penpal_index], penpal_xpath_list)
+                thread = threading.Thread(
+                    target=penpal_select, args=(self.driver, chosen_penpal_index, self.penpals[chosen_penpal_index], penpal_xpath_list))
+                thread.start()
+
             else:
                 pass
-        self.frame_right_progress_idle()
+        logger.debug("Finished printing, using frame_right_progress_idle() function")
+        # self.frame_right_progress_reset()
+        # self.frame_right_progress_idle()
 
     def set_progress_bar(self, letter_amount, current_letter, penpal):
 
@@ -569,32 +740,51 @@ class App(customtkinter.CTk):
         self.progressbar.set((current_letter / letter_amount))
         self.progressbar.place(x=(self.frame_right_width // 2), y=260, anchor="center")
 
-        self.progress_bar_footer = customtkinter.CTkLabel(master=self.frame_right_progress,
-                                                          text=f"Letter {current_letter} out of {letter_amount}",
-                                                          text_font=("Roboto Medium", -25))
+        self.progress_bar_footer = customtkinter.CTkLabel(
+            master=self.frame_right_progress,
+            text=f"Letter {current_letter} out of {letter_amount}",
+            text_font=("Roboto Medium", -25)
+        )
         self.progress_bar_footer.place(x=(self.frame_right_width // 2), y=310, anchor="center")
         self.frame_right.update()
         # time.sleep(0.2)
 
     def frame_right_progress_reset(self):
-        self.frame_right_progress.destroy()
+        try:
+            self.frame_right_progress.destroy()
+        except Exception as e:
+            logger.error(e)
+        else:
+            logger.debug("frame_right_progress destroyed")
         self.frame_right_progress = customtkinter.CTkFrame(master=self.frame_right)
         # self.frame_right_progress.forget()
         self.frame_right_progress.pack(expand=1, fill="both")
+        logger.debug("Deselecting printed penpals from checkbox list")
+        for chosen_penpal_index in self.check_var_dict.keys():
+            if self.check_var_dict[chosen_penpal_index].get() == 1:
+                self.check_var_dict[chosen_penpal_index].set(0)
+            if self.check_var_dict[chosen_penpal_index].get() == 0:
+                pass
+        self.frame_left.update()
 
     def frame_right_progress_idle(self):
-        self.progress_bar_title = customtkinter.CTkLabel(master=self.frame_right_progress, text="Select penpal(s)",
-                                                         text_font=("Roboto Medium", -30))
+        self.progress_bar_title = customtkinter.CTkLabel(
+            master=self.frame_right_progress,
+            text="Select penpal(s)",
+            text_font=("Roboto Medium", -30)
+        )
         self.progress_bar_title.place(x=(self.frame_right_width // 2), y=260, anchor="center")
 
     def open_selenium(self):
         logger.info("opening selenium")
-        open_chrome()
+        thread = threading.Thread(target=open_chrome)
+        thread.start()
+        # open_chrome()
 
     def open_cefpython(self):
         logger.info("Starting cefpython3")
         cefpython3_path = os.path.dirname(os.path.abspath(inspect.getsourcefile(cefpython3)))
-        logger.info(f"cefpython3 path: {cefpython3_path}")
+        logger.debug(f"cefpython3 path: {cefpython3_path}")
         self.cef_settings = {
             'locales_dir_path': os.path.join(cefpython3_path, "locales"),
             'resources_dir_path': os.path.join(cefpython3_path),
@@ -612,6 +802,7 @@ class App(customtkinter.CTk):
         #     logger.error(e)
         # else:
         #     logger.info("chmod cef_cache successful")
+        logger.debug("starting cef try statement")
         try:
             cef.Initialize(settings=self.cef_settings)  # Add settings
         except Exception as e:
@@ -620,9 +811,9 @@ class App(customtkinter.CTk):
         else:
             logger.info("cefpython successfully initiated")
 
-
     def not_logged_in(self):
         logger.info("Login not detected!")
+        logger.debug("forgetting frame_right_loading")
         self.frame_right_loading.forget()
         logger.debug("Calling open_cefpython function")
         self.open_cefpython()
@@ -630,7 +821,7 @@ class App(customtkinter.CTk):
         self.frame_right_browser.pack(expand=1, fill="both")
         logger.debug("Updating frame_right")
         self.frame_right.update()
-        self.load_penpals_button.wait_variable()
+        self.open_settings.wait_variable()
 
     def switch_to_progress(self):
         logger.info("switch to progress")
@@ -641,7 +832,8 @@ class App(customtkinter.CTk):
         logger.debug("Forget frame_left_browser")
         self.frame_left_browser.forget()
         logger.debug("Packing progress frames")
-        self.frame_bottom_progress.pack(anchor="se", side="bottom")
+        self.frame_bottom_progress_l.pack(anchor="se", side="left")
+        self.frame_bottom_progress_r.pack(anchor="sw", side="right")
         self.frame_right_progress.pack(expand=1, fill="both")
         self.frame_left_progress.pack(side="left", fill="both")
         logger.debug("Updating frames left, right, and bottom")
@@ -655,55 +847,115 @@ class App(customtkinter.CTk):
     #     customtkinter.set_appearance_mode(new_appearance_mode)
 
     def download_chrome_progress(self):
-        self.progress_bar_download_chrome_title = customtkinter.CTkLabel(master=self.frame_right_download_chrome,
-                                                                         text="Downloading Chrome...",
-                                                                         text_font=("Roboto Medium", -30))
-        self.progress_bar_download_chrome_title.place(x=(self.frame_right_width // 2), y=210, anchor="center")
+        self.progress_bar_download_chrome_title = customtkinter.CTkLabel(
+            master=self.frame_right_download_chrome,
+            text="Downloading Chrome...",
+            text_font=("Roboto Medium", -30)
+        )
+        # self.progress_bar_download_chrome_title.place(x=(self.frame_right_width // 2), y=210, anchor="center")
+        self.progress_bar_download_chrome_title.grid(
+            row=1,
+            column=0,
+            sticky="nsew"
+        )
 
-        # self.progress_bar_chrome = customtkinter.CTkProgressBar(
-        #     master=self.frame_right_download_chrome,
-        #     width=500,
-        #     height=40,
-        # )
-        #
-        # self.progress_bar_chrome.set(round((current / total), 3) * 10)
-        # logger.info(round((current / total), 3) * 10)
-        # self.progress_bar_chrome.place(x=(self.frame_right_width // 2), y=260, anchor="center")
-
-        self.progress_bar_footer = customtkinter.CTkLabel(master=self.frame_right_download_chrome,
-                                                          text="This will only happen once",
-                                                          text_font=("Roboto Medium", -25))
-        self.progress_bar_footer.place(x=(self.frame_right_width // 2), y=310, anchor="center")
+        self.progress_bar_footer = customtkinter.CTkLabel(
+            master=self.frame_right_download_chrome,
+            text="This will only happen once",
+            text_font=("Roboto Medium", -25)
+        )
+        # self.progress_bar_footer.place(x=(self.frame_right_width // 2), y=310, anchor="center")
+        self.progress_bar_footer.grid(
+            row=3,
+            column=0,
+            sticky="nsew"
+        )
         self.frame_right.update()
 
+    def download_chrome_progress_bar(self, downloaded, total_size):
+        self.progress_bar_chrome = customtkinter.CTkLabel(
+            master=self.frame_right_download_chrome,
+            text=f"{int(downloaded / 1024 / 1024)}mb / {int(total_size / 1024 / 1024)}mb",
+            text_font=("Arial", -25)
+        )
+        self.progress_bar_chrome.grid(
+            row=2,
+            column=0,
+            sticky="nsew"
+        )
+        # Not the most elegant solution, but it'll do for now
+
+        # self.frame_right.update()
+
+
+    def reporthook(self, count, block_size, total_size):
+        # percent = int(count * block_size * 100 / total_size)
+        current = 0
+        downloaded = count * block_size
+        downloaded_mb = int(downloaded / 1024 / 1024)
+        if downloaded_mb > self.reporthook_counter:
+            # print("extra mb")
+            self.reporthook_counter = downloaded_mb
+            self.download_chrome_progress_bar(downloaded, total_size)
+        else:
+            pass
+
+
     def download_chrome(self):
-        self.frame_right_loading.forget()
-        self.frame_right_download_chrome.pack(expand=1, fill="both")
         if exists(chrome_executable_path):
             pass
         else:
-            self.download_chrome_progress()
-            if exists(chrome_sync_path):
-                # Archive(chrome_sync_path).extractall(dir_path)
-                with py7zr.SevenZipFile(chrome_sync_path, mode='r') as archive:
-                    archive.extractall(path=dir_path)
-                os.remove(chrome_sync_path)
-            else:
-                # wget.download(
-                #     'https://github.com/Hibbiki/chromium-win64/releases/download/v105.0.5195.102-r856/chrome.sync.7z',
-                #     dir_path,
-                #     bar=self.download_chrome_progress
-                # )
+            self.frame_right_loading.forget()
 
-                urllib.request.urlretrieve(
-                    'https://github.com/Hibbiki/chromium-win64/releases/download/v105.0.5195.102-r856/chrome.sync.7z',
-                    'chrome.sync.7z'
-                )
-                # pyunpack.Archive(chrome_sync_path).extractall(dir_path)
-                with py7zr.SevenZipFile(chrome_sync_path, mode='r') as archive:
-                    archive.extractall(path=dir_path)
+            self.frame_right_download_chrome.pack(expand=1, fill="both")
+            self.frame_right_download_chrome.grid_rowconfigure((0,4), weight=1)
+            self.frame_right_download_chrome.grid_columnconfigure(0, weight=1)
+
+            self.download_chrome_progress()
+            try:
+                import py7zr
+            except Exception as e:
+                logger.critical(e)
+                os._exit(0)
+            else:
+                logger.debug("Successfully imported py7zr")
+            try:
+                os.remove(chrome_sync_path)
+            except Exception as e:
+                logger.error(e)
+
+            # self.progress_bar_chrome = customtkinter.CTkProgressBar(
+            #     master=self.frame_right_download_chrome,
+            #     width=500,
+            #     height=40,
+            # )
+            # Progress bar might be slowing things down?
+
+            self.progress_bar_chrome = customtkinter.CTkLabel(
+                master=self.frame_right_download_chrome,
+                text="0 / 0",
+                text_font=("Arial", -25)
+            )
+            # self.progress_bar_chrome.place(x=(self.frame_right_width // 2), y=260, anchor="center")
+            self.progress_bar_chrome.grid(
+                row=2,
+                column=0,
+                sticky="nsew",
+            )
+
+
+            urllib.request.urlretrieve(
+                'https://github.com/Hibbiki/chromium-win64/releases/download/v105.0.5195.102-r856/chrome.sync.7z',
+                'chrome.sync.7z',
+                self.reporthook
+            )
+            # pyunpack.Archive(chrome_sync_path).extractall(dir_path)
+            with py7zr.SevenZipFile(chrome_sync_path, mode='r') as archive:
+                archive.extractall(path=dir_path)
             os.remove(chrome_sync_path)
-        self.frame_right_download_chrome.forget()
+            self.frame_right_download_chrome.forget()
+            # Back to loading! We did it! We downloaded Chrome! Woohoo!
+            self.frame_right_loading.pack(expand=1, fill="both")
 
     def on_closing(self, event=0):
         logger.debug("Iniating shutdown sequence")
@@ -727,38 +979,27 @@ class App(customtkinter.CTk):
 # ============ Integrated Browser Frame Code ============
 class BrowserFrame(tk.Frame):
     WIDTH = App.WIDTH
-    FRAME_RIGHT_WIDTH = (WIDTH - (WIDTH // 3))
+    FRAME_RIGHT_WIDTH = (WIDTH - (WIDTH // 3)) + 13
 
     def __init__(self, master):
         logger.info("init")
         self.closing = False
         self.browser = None
         tk.Frame.__init__(self, master)
-        # self.app_title = tk.Label(self, text="This is a test", anchor="center")
         self.bind("<Configure>", self.on_configure)
-        # self.embed_browser()
         self.focus_set()
 
     def embed_browser(self):
-        logger.info("embed")
+        logger.info("embed browser")
         window_info = cef.WindowInfo()
-        rect = [0, 0, BrowserFrame.FRAME_RIGHT_WIDTH, self.winfo_height()]
+        rect = [0, 0, BrowserFrame.FRAME_RIGHT_WIDTH, self.winfo_height() + 17]
         window_info.SetAsChild(self.get_window_handle(), rect)
         self.browser = cef.CreateBrowserSync(window_info, url="https://web.slowly.app/")
+        # logger.info(self.browser.GetUrl())
         assert self.browser
-        # self.browser.SetClientCallback("OnLoadEnd", self.OnLoadEnd)
-        # self.browser.GetUrl()
-        self.message_loop_work()
-        # self.close_browser()
 
-    # def OnLoadEnd(browser, frame, httpCode):
-    #     logger.info("onload")
-    #     if frame == browser.GetMainFrame():
-    #     # if frame == self.browser.GetMainFrame():
-    #         logger.info("Finished loading main frame: %s (http code = %d)"
-    #               % (frame.GetUrl(), httpCode))
-    #     # else:
-    #     #     logger.info("Hello!")
+        self.message_loop_work()
+
 
     def get_window_handle(self):
         if self.winfo_id() > 0:
@@ -769,6 +1010,18 @@ class BrowserFrame(tk.Frame):
     def message_loop_work(self):
         cef.MessageLoopWork()
         self.after(10, self.message_loop_work)
+
+        # Scans current URL for changes and starts the load_penpals_button_event function when a change is detected
+        if self.browser.GetUrl() != home_url:
+            pass
+        else:
+            logger.debug(f"current cefpython URL: {self.browser.GetUrl()}")
+            logger.info("cefpython3 login detected, initiating load penpals sequence")
+            app.load_penpals_button_event()
+
+        # print(self.browser.GetUrl())
+
+
 
     def on_configure(self, _):
         if not self.browser:
@@ -811,8 +1064,13 @@ def popup_check(driver):
     # driver.find_element(By.XPATH, popup_xpath)
     popup = driver.find_elements(By.XPATH, popup_xpath)
     if len(popup) >= 1:
-        popup.click()
-        logger.info("Popup closed!!!")
+        try:
+            popup.click()
+        except Exception as e:
+            logger.error(f"Error clicking popup: {popup}")
+            logger.error(e)
+        else:
+            logger.info("Popup closed!!!")
     else:
         logger.info("No popups detected, phew!")
 
@@ -876,7 +1134,12 @@ def make_pdf(driver, letter_count, penpal_dir, penpal):
 def open_letter(driver, letter_int, letter_count, penpal_dir, penpal):
     letters = driver.find_elements(By.XPATH, xpath)
     letter = letters[letter_int]
-    letter.click()
+    try:
+        letter.click()
+    except Exception as e:
+        logger.critical(e)
+    else:
+        logger.debug(f"Letter {letter} clicked")
     time.sleep(1)
     scroll_down(driver)
     photos_exist = check_for_photos(driver)
@@ -885,7 +1148,10 @@ def open_letter(driver, letter_int, letter_count, penpal_dir, penpal):
         next_button = driver.find_element(By.XPATH, next_button_xpath)
         logger.info("Loading images...")
         for clicker in range(0, amount - 1):
-            next_button.click()
+            try:
+                next_button.click()
+            except Exception as e:
+                logger.error(e)
             time.sleep(0.5)
         logger.info("Please allow time for the images to properly load.")
         time.sleep(5)
@@ -922,12 +1188,18 @@ def penpal_select(driver, chosen_penpal_int, chosen_penpal_name, available_penpa
     logger.info("Selecting penpal")
     chosen_penpal = available_penpals[chosen_penpal_int]
     logger.info("Clicking penpal")
-    chosen_penpal.click()
+    try:
+        chosen_penpal.click()
+    except Exception as e:
+        logger.critical(e)
+    else:
+        logger.debug(f"Clicked {chosen_penpal}")
     driver = driver
     load_and_print(driver, chosen_penpal_name)
 
     # next_button = driver.find_element(By.XPATH, next_button_xpath)
     # next_button.click()
+    return logger.debug("end of penpal_select function")
 
 
 def load_and_print(driver, penpal):
@@ -985,30 +1257,57 @@ def load_and_print(driver, penpal):
             logger.info(f"Letter {current_letter_int} finished processing")
             current_letter_int -= 1
             back_button = driver.find_element(By.XPATH, back_button_xpath)
-            back_button.click()
+            try:
+                back_button.click()
+            except Exception as e:
+                logger.critical(e)
             time.sleep(2)
     else:
-        logger.info(f"{amount_letters} letters successfully printeded!")
-    app.frame_right_progress_reset()
+        logger.info(f"{amount_letters} letters successfully printed!")
+
+    # Printing process finished, now switching back to idle frame_right_progress frame
+    try:
+        app.frame_right_progress_reset()
+    except Exception as e:
+        logger.error("error with frame_right_progress_reset function")
+        logger.error(e)
+    else:
+        logger.debug("frame_right_progress_reset function successfully ran")
+
+    try:
+        app.frame_right_progress_idle()
+    except Exception as e:
+        logger.error("error with frame_right_progress_idle function")
+        logger.error(e)
+    else:
+        logger.debug("frame_right_progress_idle function successfully ran")
     # driver.quit()
-    chrome_running = False
+    # chrome_running = False
+    return logger.debug("end of load and print function")
 
 
 def open_chrome():
     logger.debug("Setting Chrome options")
     options = ChromeOptions()
     logger.debug("Checking for Chrome installation")
-    try:
-        reg_connection = winreg.ConnectRegistry(None, winreg.HKEY_LOCAL_MACHINE)
-        winreg.OpenKeyEx(reg_connection, r"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\chrome.exe")
-    except Exception as e:
-        logger.debug(f"{e}")
+    if chrome_installed() == True:
+        logger.info("Chrome installation found")
+    else:
         logger.info("Initiating Chrome download")
         app.download_chrome()
         logger.info("Chrome download process finished")
         options.binary_location = chrome_executable_path
-    else:
-        logger.info("Chrome installation found")
+    # try:
+    #     reg_connection = winreg.ConnectRegistry(None, winreg.HKEY_LOCAL_MACHINE)
+    #     winreg.OpenKeyEx(reg_connection, r"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\chrome.exe")
+    # except Exception as e:
+    #     logger.debug(f"{e}")
+    #     logger.info("Initiating Chrome download")
+    #     app.download_chrome()
+    #     logger.info("Chrome download process finished")
+    #     options.binary_location = chrome_executable_path
+    # else:
+    #     logger.info("Chrome installation found")
     options.add_argument("--start-maximized")
     options.add_argument('--window-size=1920,1080')
     options.add_argument(f"user-data-dir={user_data_path}")
@@ -1027,14 +1326,10 @@ def open_chrome():
 
     logger.info("Starting selenium")
     try:
-        # logger.info(f"EC path: {os.path.dirname(os.path.abspath(inspect.getsourcefile(EC)))}")
-        # logger.info(f"WDW path: {os.path.dirname(os.path.abspath(inspect.getsourcefile(WebDriverWait)))}")
-        # logger.info(f"By path: {os.path.dirname(os.path.abspath(inspect.getsourcefile(By)))}")
-        # logger.info(f"CDM path: {os.path.dirname(os.path.abspath(inspect.getsourcefile(ChromeDriverManager)))}")
-        # logger.info(f"SChrome path: {os.path.dirname(os.path.abspath(inspect.getsourcefile(Chrome)))}")
-        # logger.info(f"ChromeO path: {os.path.dirname(os.path.abspath(inspect.getsourcefile(ChromeOptions)))}")
         # Had to comment out show_download_progress(resp) from http.py file to stop NoneType error
-        driver = Chrome(service=Service(ChromeDriverManager().install()), options=options)
+        chrome_service = Service(ChromeDriverManager().install())
+        chrome_service.creationflags = CREATE_NO_WINDOW
+        driver = Chrome(service=chrome_service, options=options)
         logger.info("Opening Slowly")
         driver.get(website)
     except Exception as e:
@@ -1052,6 +1347,7 @@ def chrome_main(driver):
     while driver.current_url != home_url and attempt <= 10:
         logger.warning(f"Load attempt {attempt} failed!")
         time.sleep(1)
+        # tk.Tk.after(1000, logger.debug("after(1000) complete"))
         attempt += 1
     if driver.current_url != home_url:
         driver.close()
@@ -1070,6 +1366,7 @@ def chrome_main(driver):
     #     pass
     logger.debug("time.sleep(3)")
     time.sleep(3)  # Bandaid until above is fixed
+    # tk.Tk.after(1000, logger.debug("after(1000) complete"))
     logger.debug("Get list of available penpals via xpath")
     available_penpals = driver.find_elements(By.XPATH, penpals_xpath)
     penpals_list = []
