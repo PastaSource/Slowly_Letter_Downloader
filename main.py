@@ -82,6 +82,7 @@ try:
     import customtkinter
     import tkinter as tk
     from PIL import ImageTk, Image
+    from itertools import count, cycle
     import pyglet
     import shutil
     import stat
@@ -179,6 +180,7 @@ class App(customtkinter.CTk):
 
         self.browser_frame = None
         self.reporthook_counter = 0 # reporthook for download progress
+        self.loading_circle_loaded = False # reports whether loading circle gif is currently loaded
         self.penpals = []
         self.check_var_dict = {}
         self.driver = None
@@ -441,18 +443,80 @@ class App(customtkinter.CTk):
         # self.progress_bar_download_chrome.place(x=(self.frame_right_width // 2), y=260, anchor="center")
 
         # Loading penpals screen
-        self.loading_title = customtkinter.CTkLabel(
-            master=self.frame_right_loading,
-            text="Loading penpals\nPlease wait...",
-            text_font=(self.typewriter_font, -30)
-        )
-        self.loading_title.place(x=(self.frame_right_width // 2), y=210, anchor="center")
+        self.loading_frame_init()
 
         # Set global frame IDs
         App.FRAME_RIGHT_ID = self.frame_right.winfo_name()
         App.FRAME_RIGHT_BROWSER_ID = self.frame_right_browser.winfo_name()
         App.FRAME_RIGHT_PROGRESS_ID = self.frame_right_progress.winfo_name()
         App.FRAME_RIGHT_LOADING_ID = self.frame_right_loading.winfo_name()
+
+
+    def load_gif(self, gif_frame):
+        self.selected_gif_frame = gif_frame
+        gif = os.path.join(interface_path, 'loading_circle.gif')
+
+        if isinstance(gif, str):
+            gif = Image.open(gif)
+        frames = []
+
+        try:
+            for i in count(1):
+                frames.append(ImageTk.PhotoImage(gif.copy()))
+                gif.seek(i)
+        except EOFError:
+            pass
+        self.gif_frames = cycle(frames[1:])
+        try:
+            self.gif_delay = gif.info['duration']
+        except:
+            self.gif_delay = 100
+
+        self.loading_circle_loaded = True
+        self.next_gif_frame()
+
+    def next_gif_frame(self):
+        if self.gif_frames:
+            self.selected_gif_frame.configure(image=next(self.gif_frames))
+            self.after(self.gif_delay, self.next_gif_frame)
+
+    def unload_gif(self):
+        self.loading_gif_label.configure(image=None)
+        self.gif_frames = None
+        self.loading_circle_loaded = False
+
+    def loading_frame_init(self):
+        self.frame_right_loading.grid_rowconfigure((0,3), weight=1)
+        self.frame_right_loading.grid_columnconfigure(0, weight=1)
+
+        self.loading_title = customtkinter.CTkLabel(
+            master=self.frame_right_loading,
+            text="Loading penpals\nPlease wait...",
+            text_font=(self.typewriter_font, -30)
+        )
+        # self.loading_title.place(x=(self.frame_right_width // 2), y=210, anchor="center")
+        self.loading_title.grid(
+            row=1,
+            column=0,
+            sticky='nsew'
+        )
+
+        self.loading_gif_label = customtkinter.CTkLabel(
+            master=self.frame_right_loading
+        )
+        self.loading_gif_label.grid(
+            row=2,
+            column=0,
+            sticky='nsew'
+        )
+
+    def loading_frame_load(self):
+        self.frame_right_loading.pack(expand=1, fill="both")
+        self.load_gif(self.loading_gif_label)
+
+    def loading_frame_unload(self):
+        self.unload_gif()
+        self.frame_right_loading.forget()
 
     def settings_popup(self):
         self.settings_window = customtkinter.CTkToplevel(self)
@@ -521,7 +585,8 @@ class App(customtkinter.CTk):
         #     self.download_chrome()
 
         logger.debug("packing frame_right_loading")
-        self.frame_right_loading.pack(expand=1, fill="both")
+        # self.frame_right_loading.pack(expand=1, fill="both")
+        self.loading_frame_load()
         self.frame_right.update()
         self.cache_cef_to_selenium()
         # penpals = ["test1", "test2", "test3"]
@@ -725,28 +790,67 @@ class App(customtkinter.CTk):
         logger.debug("Finished printing, using frame_right_progress_idle() function")
         # self.frame_right_progress_reset()
         # self.frame_right_progress_idle()
+        self.loading_circle_loaded = False
 
     def set_progress_bar(self, letter_amount, current_letter, penpal):
+        self.frame_right_progress.grid_rowconfigure((0,4), weight=1)
+        self.frame_right_progress.grid_columnconfigure(0, weight=1)
 
-        self.progress_bar_title = customtkinter.CTkLabel(master=self.frame_right_progress, text=f"{penpal}",
-                                                         text_font=("Roboto Medium", -30))
-        self.progress_bar_title.place(x=(self.frame_right_width // 2), y=210, anchor="center")
+        # try:
+        #     self.unload_gif()
+        # except Exception:
+        #     pass
 
-        self.progressbar = customtkinter.CTkProgressBar(
+        self.progress_bar_title = customtkinter.CTkLabel(
             master=self.frame_right_progress,
-            width=500,
-            height=40,
+            text=f"{penpal}",
+            text_font=("Roboto Medium", -30)
         )
-        self.progressbar.set((current_letter / letter_amount))
-        self.progressbar.place(x=(self.frame_right_width // 2), y=260, anchor="center")
+        # self.progress_bar_title.place(x=(self.frame_right_width // 2), y=210, anchor="center")
+        self.progress_bar_title.grid(
+            row=1,
+            column=0,
+            sticky='nsew'
+        )
+
+        # Removed as I feel this is redundant because we already have the progress_bar_footer
+        # Will replace with a progress circle
+        # self.progressbar = customtkinter.CTkProgressBar(
+        #     master=self.frame_right_progress,
+        #     width=500,
+        #     height=40,
+        # )
+        # self.progressbar.set((current_letter / letter_amount))
+        # self.progressbar.place(x=(self.frame_right_width // 2), y=260, anchor="center")
+
+        if self.loading_circle_loaded == False:
+            self.progress_circle = customtkinter.CTkLabel(
+                master=self.frame_right_progress,
+                text=""
+            )
+        self.progress_circle.grid(
+            row=2,
+            column=0,
+            sticky='nsew'
+        )
 
         self.progress_bar_footer = customtkinter.CTkLabel(
             master=self.frame_right_progress,
             text=f"Letter {current_letter} out of {letter_amount}",
             text_font=("Roboto Medium", -25)
         )
-        self.progress_bar_footer.place(x=(self.frame_right_width // 2), y=310, anchor="center")
+        # self.progress_bar_footer.place(x=(self.frame_right_width // 2), y=310, anchor="center")
+        self.progress_bar_footer.grid(
+            row=3,
+            column=0,
+            sticky='nsew'
+        )
+
         self.frame_right.update()
+        if self.loading_circle_loaded == False:
+            self.load_gif(self.progress_circle)
+        else:
+            pass
         # time.sleep(0.2)
 
     def frame_right_progress_reset(self):
@@ -814,7 +918,8 @@ class App(customtkinter.CTk):
     def not_logged_in(self):
         logger.info("Login not detected!")
         logger.debug("forgetting frame_right_loading")
-        self.frame_right_loading.forget()
+        # self.frame_right_loading.forget()
+        self.loading_frame_unload()
         logger.debug("Calling open_cefpython function")
         self.open_cefpython()
         logger.debug("Packing frame_right_browser")
@@ -828,7 +933,8 @@ class App(customtkinter.CTk):
         logger.debug("Forget frame_bottom_browser")
         self.frame_bottom_browser.forget()
         logger.debug("Forget frame_right_loading")
-        self.frame_right_loading.forget()
+        # self.frame_right_loading.forget()
+        self.loading_frame_unload()
         logger.debug("Forget frame_left_browser")
         self.frame_left_browser.forget()
         logger.debug("Packing progress frames")
@@ -843,8 +949,6 @@ class App(customtkinter.CTk):
         logger.debug("Initiate run_button.wait_variable()")
         self.run_button.wait_variable()
 
-    # def change_appearance_mode(self, new_appearance_mode):
-    #     customtkinter.set_appearance_mode(new_appearance_mode)
 
     def download_chrome_progress(self):
         self.progress_bar_download_chrome_title = customtkinter.CTkLabel(
@@ -872,31 +976,14 @@ class App(customtkinter.CTk):
         )
         self.frame_right.update()
 
-    def download_chrome_progress_bar(self, downloaded, total_size):
-        self.progress_bar_chrome = customtkinter.CTkLabel(
-            master=self.frame_right_download_chrome,
-            text=f"{int(downloaded / 1024 / 1024)}mb / {int(total_size / 1024 / 1024)}mb",
-            text_font=("Arial", -25)
-        )
-        self.progress_bar_chrome.grid(
-            row=2,
-            column=0,
-            sticky="nsew"
-        )
-        # Not the most elegant solution, but it'll do for now
-
-        # self.frame_right.update()
-
 
     def reporthook(self, count, block_size, total_size):
         # percent = int(count * block_size * 100 / total_size)
-        current = 0
         downloaded = count * block_size
         downloaded_mb = int(downloaded / 1024 / 1024)
         if downloaded_mb > self.reporthook_counter:
-            # print("extra mb")
             self.reporthook_counter = downloaded_mb
-            self.download_chrome_progress_bar(downloaded, total_size)
+            self.download_text.set(f"{int(downloaded / 1024 / 1024)}mb / {int(total_size / 1024 / 1024)}mb")
         else:
             pass
 
@@ -905,7 +992,8 @@ class App(customtkinter.CTk):
         if exists(chrome_executable_path):
             pass
         else:
-            self.frame_right_loading.forget()
+            # self.frame_right_loading.forget()
+            self.loading_frame_unload()
 
             self.frame_right_download_chrome.pack(expand=1, fill="both")
             self.frame_right_download_chrome.grid_rowconfigure((0,4), weight=1)
@@ -919,10 +1007,13 @@ class App(customtkinter.CTk):
                 os._exit(0)
             else:
                 logger.debug("Successfully imported py7zr")
-            try:
-                os.remove(chrome_sync_path)
-            except Exception as e:
-                logger.error(e)
+            if exists(chrome_sync_path):
+                try:
+                    os.remove(chrome_sync_path)
+                except Exception as e:
+                    logger.error(e)
+            else:
+                pass
 
             # self.progress_bar_chrome = customtkinter.CTkProgressBar(
             #     master=self.frame_right_download_chrome,
@@ -931,18 +1022,18 @@ class App(customtkinter.CTk):
             # )
             # Progress bar might be slowing things down?
 
+            self.download_text = customtkinter.StringVar()
+            self.download_text.set("0mb / 0mb")
             self.progress_bar_chrome = customtkinter.CTkLabel(
                 master=self.frame_right_download_chrome,
-                text="0 / 0",
+                textvariable=self.download_text,
                 text_font=("Arial", -25)
             )
-            # self.progress_bar_chrome.place(x=(self.frame_right_width // 2), y=260, anchor="center")
             self.progress_bar_chrome.grid(
                 row=2,
                 column=0,
                 sticky="nsew",
             )
-
 
             urllib.request.urlretrieve(
                 'https://github.com/Hibbiki/chromium-win64/releases/download/v105.0.5195.102-r856/chrome.sync.7z',
@@ -955,7 +1046,8 @@ class App(customtkinter.CTk):
             os.remove(chrome_sync_path)
             self.frame_right_download_chrome.forget()
             # Back to loading! We did it! We downloaded Chrome! Woohoo!
-            self.frame_right_loading.pack(expand=1, fill="both")
+            # self.frame_right_loading.pack(expand=1, fill="both")
+            self.loading_frame_load()
 
     def on_closing(self, event=0):
         logger.debug("Iniating shutdown sequence")
