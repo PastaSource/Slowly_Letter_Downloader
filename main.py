@@ -108,7 +108,7 @@ penpals_regex = '">(.*)<\/h6>'
 id_regex = 'object .*\.(.*)>'
 
 # xpath
-xpath = "//div[@class='col-6 col-xl-4 mb-3']"  # Outer HTML
+letter_xpath = "//div[@class='col-6 col-xl-4 mb-3']"  # Letter outer HTML
 signature_xpath = "//div[@class='media-body mx-3 mt-2']"  # Finds name and date logger.infoed on letter
 dot_xpath = "//ul[@class='slick-dots']"
 next_button_xpath = "//button[@class='slick-arrow slick-next']"
@@ -342,7 +342,7 @@ class App(customtkinter.CTk):
             text_font=(self.typewriter_font, -20),
             text_color="#000000",
             fg_color=slowly_yellow,
-            command=self.run_button_event
+            command=self.run_button_click
         )
         self.run_button.grid(row=0, column=2, columnspan=3, pady=20, padx=20, sticky="se")
 
@@ -769,28 +769,84 @@ class App(customtkinter.CTk):
         self.frame_bottom.update()
         logger.info("deselect all button pressed")
 
-    def run_button_event(self):
+    def deactivate_buttons(self):
+        logger.debug("Disabling buttons")
+        if self.run_button.state == "normal":
+            self.run_button.configure(state="disabled")
+        try:
+            if self.select_all_button.state == "normal":
+                self.select_all_button.configure(state="disabled")
+        except:
+            if self.deselect_all_button.state == "normal":
+                self.deselect_all_button.configure(state="disabled")
+
+
+    def reactivate_buttons(self):
+        pass
+
+    def run_button_click(self):
         logger.info("run button pressed")
+        # thread = threading.Thread(
+        #     target=self.run_button_event()
+        # )
+        # thread.start()
+        self.deactivate_buttons()
+        self.run_button_event()
+
+    def run_button_event(self):
+        logger.info("run button event")
         if exists(download_path):
             logger.info("Letter path already exists")
         else:
             logger.info("Letter path not found\nCreating path...")
             os.mkdir(download_path)
         penpal_xpath_list = available_penpals(self.driver)
-        for chosen_penpal_index in self.check_var_dict.keys():
-            if self.check_var_dict[chosen_penpal_index].get() == 1:
-                logger.info(f"Loading {self.penpals[chosen_penpal_index]}")
-                # penpal_select(self.driver, chosen_penpal_index, self.penpals[chosen_penpal_index], penpal_xpath_list)
-                thread = threading.Thread(
-                    target=penpal_select, args=(self.driver, chosen_penpal_index, self.penpals[chosen_penpal_index], penpal_xpath_list))
-                thread.start()
 
-            else:
-                pass
-        logger.debug("Finished printing, using frame_right_progress_idle() function")
+        try:
+            self.frame_right_progress_soft_reset()
+        except Exception as e:
+            logger.error("error with frame_right_progress_reset function")
+            logger.error(e)
+        else:
+            logger.debug("frame_right_progress_reset function successfully ran")
+
+        thread = threading.Thread(
+            target=penpal_select_loop,
+            args=(
+                self.driver,
+                self.penpals,
+                penpal_xpath_list,
+                self.check_var_dict
+            )
+        )
+        thread.start()
+
+
+    def run_button_end(self):
+        logger.debug("Finished printing")
         # self.frame_right_progress_reset()
         # self.frame_right_progress_idle()
+
+        # Printing process finished, now switching back to idle frame_right_progress frame
+        try:
+            self.frame_right_progress_reset()
+        except Exception as e:
+            logger.error("error with frame_right_progress_reset function")
+            logger.error(e)
+        else:
+            logger.debug("frame_right_progress_reset function successfully ran")
+
+        try:
+            self.frame_right_progress_idle()
+        except Exception as e:
+            logger.error("error with frame_right_progress_idle function")
+            logger.error(e)
+        else:
+            logger.debug("frame_right_progress_idle function successfully ran")
+
         self.loading_circle_loaded = False
+        logger.debug("End of run_button_event")
+
 
     def set_progress_bar(self, letter_amount, current_letter, penpal):
         self.frame_right_progress.grid_rowconfigure((0,4), weight=1)
@@ -852,6 +908,17 @@ class App(customtkinter.CTk):
         else:
             pass
         # time.sleep(0.2)
+
+    def frame_right_progress_soft_reset(self):
+        try:
+            self.frame_right_progress.destroy()
+        except Exception as e:
+            logger.error(e)
+        else:
+            logger.debug("frame_right_progress destroyed")
+        self.frame_right_progress = customtkinter.CTkFrame(master=self.frame_right)
+        # self.frame_right_progress.forget()
+        self.frame_right_progress.pack(expand=1, fill="both")
 
     def frame_right_progress_reset(self):
         try:
@@ -1092,7 +1159,6 @@ class BrowserFrame(tk.Frame):
 
         self.message_loop_work()
 
-
     def get_window_handle(self):
         if self.winfo_id() > 0:
             return self.winfo_id()
@@ -1112,8 +1178,6 @@ class BrowserFrame(tk.Frame):
             app.load_penpals_button_event()
 
         # print(self.browser.GetUrl())
-
-
 
     def on_configure(self, _):
         if not self.browser:
@@ -1222,9 +1286,13 @@ def make_pdf(driver, letter_count, penpal_dir, penpal):
     else:
         logger.info(f"Letter {letter_count} failed to print.")
 
+def log_current_url(driver):
+    logger.debug(f"Current URL: {driver.current_url}")
 
 def open_letter(driver, letter_int, letter_count, penpal_dir, penpal):
-    letters = driver.find_elements(By.XPATH, xpath)
+    log_current_url(driver)
+    letters = driver.find_elements(By.XPATH, letter_xpath)
+    logger.debug(f"Penpal: {penpal}, letter count: {len(letters)}, letter_int: {letter_int}")
     letter = letters[letter_int]
     try:
         letter.click()
@@ -1276,6 +1344,21 @@ def available_penpals(driver):
     return penpals
 
 
+def penpal_select_loop(driver, penpals, xpath_list, penpal_dict):
+    for chosen_penpal_index in penpal_dict.keys():
+        if penpal_dict[chosen_penpal_index].get() == 1:
+            logger.info(f"Loading {penpals[chosen_penpal_index]}")
+            penpal_select(
+                driver,
+                chosen_penpal_index,
+                penpals[chosen_penpal_index],
+                xpath_list
+            )
+        else:
+            pass
+    app.run_button_end()
+
+
 def penpal_select(driver, chosen_penpal_int, chosen_penpal_name, available_penpals):
     logger.info("Selecting penpal")
     chosen_penpal = available_penpals[chosen_penpal_int]
@@ -1304,7 +1387,7 @@ def load_and_print(driver, penpal):
     # Scroll down to load all letters
     try:
         WebDriverWait(driver, 30).until(
-            EC.presence_of_element_located((By.XPATH, xpath)))
+            EC.presence_of_element_located((By.XPATH, letter_xpath)))
         logger.info("Loading letters")
         scroll_down(driver)
     finally:
@@ -1325,15 +1408,14 @@ def load_and_print(driver, penpal):
             meta_check = PdfReader(penpal_file_path).Info
             for key, value in meta_check.items():
                 if key == "/Letter":
-                    # value = int(re.search("\((\d*)\)", value).group(1))
-                    # int_value = int(value)
-                    # int_minus_one = (int_value - 1)
                     existing_letters.append(int(value))
     # logger.info(existing_letters)
     # find letters and count how many have been sent/received on SLOWLY
-    letters = driver.find_elements(By.XPATH, xpath)
+    letters = driver.find_elements(By.XPATH, letter_xpath)
     current_letter_int = len(letters)  # tracks which letter is currently being processed
     amount_letters = current_letter_int  # amount of letters available to download
+    logger.debug("load_and_print")
+    logger.debug(f"Letter count: {len(letters)}")
 
     # Printing process
     logger.info("Beginning letter printer process")
@@ -1357,22 +1439,7 @@ def load_and_print(driver, penpal):
     else:
         logger.info(f"{amount_letters} letters successfully printed!")
 
-    # Printing process finished, now switching back to idle frame_right_progress frame
-    try:
-        app.frame_right_progress_reset()
-    except Exception as e:
-        logger.error("error with frame_right_progress_reset function")
-        logger.error(e)
-    else:
-        logger.debug("frame_right_progress_reset function successfully ran")
 
-    try:
-        app.frame_right_progress_idle()
-    except Exception as e:
-        logger.error("error with frame_right_progress_idle function")
-        logger.error(e)
-    else:
-        logger.debug("frame_right_progress_idle function successfully ran")
     # driver.quit()
     # chrome_running = False
     return logger.debug("end of load and print function")
