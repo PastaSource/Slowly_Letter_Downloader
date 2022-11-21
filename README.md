@@ -4,7 +4,7 @@ Automates the process of downloading letters from slowly in PDF form.
 
 ## Installation
 
-A Windows binary is available, and installable version is currently in development.
+A Windows binary is available, an installable version is currently in development.
 
 ## Requirements
 
