@@ -53,7 +53,8 @@ options = {"build_exe": {
         "shutil",
         "stat",
         "inspect",
-        "threading"
+        "threading",
+        "ctypes"
         ],
     "path": sys.path + ["venv\\Lib\\site-packages"],
     "include_files": [
@@ -61,7 +62,11 @@ options = {"build_exe": {
         ("venv\\Lib\\site-packages\\brotli.py", "lib\\brotli.py"),
         "interface"
         # "cefpython3"
-        ]
+        ],
+    "excludes": [
+        "numpy",
+        "pandas"
+    ]
     # "replace_paths": [("*", "")]
     }
 }

@@ -247,7 +247,7 @@ class App(customtkinter.CTk):
             width=self.frame_right_width
         )
         self.frame_right.pack(anchor="e", expand=1, fill="both")
-        self.frame_right.bind("<Configure>", self.on_configure) # Allow cefpython resizing
+        self.frame_right.bind("<Configure>", self.on_configure)  # Allow cefpython resizing
 
         # Penpals title frame
         self.frame_left_penpals_title = customtkinter.CTkFrame(
@@ -446,7 +446,6 @@ class App(customtkinter.CTk):
         self.browser_frame = BrowserFrame(self.frame_right_browser)
         self.browser_frame.pack(fill="both", expand=1, anchor="e", side="left")
 
-
         # Download letters progress bar
         self.progress_bar_title = customtkinter.CTkLabel(
             master=self.frame_right_progress,
@@ -469,7 +468,6 @@ class App(customtkinter.CTk):
         App.FRAME_RIGHT_BROWSER_ID = self.frame_right_browser.winfo_name()
         App.FRAME_RIGHT_PROGRESS_ID = self.frame_right_progress.winfo_name()
         App.FRAME_RIGHT_LOADING_ID = self.frame_right_loading.winfo_name()
-
 
     def load_gif(self, gif_frame):
         self.selected_gif_frame = gif_frame
@@ -1126,8 +1124,13 @@ class App(customtkinter.CTk):
                 sticky="nsew",
             )
 
+            chrome_url = get_current_chrome()
+            # chrome_latest_url = urllib.request.urlopen("https://github.com/Hibbiki/chromium-win64/releases/latest")
+            # updated_url = re.sub("tag", "download", chrome_latest_url.geturl())
+            # chrome_url = f"{updated_url}/chrome.sync.7z"
+
             urllib.request.urlretrieve(
-                'https://github.com/Hibbiki/chromium-win64/releases/download/v105.0.5195.102-r856/chrome.sync.7z',
+                chrome_url,
                 'chrome.sync.7z',
                 self.reporthook
             )
@@ -1247,7 +1250,7 @@ class BrowserFrame(tk.Frame):
 def scroll_down(driver):
     try:
         # Scrolls through letters to load them
-        scroll_pause_time = 1 # was originally 2, halved it and am hoping for the best
+        scroll_pause_time = 1  # was originally 2, halved it and am hoping for the best
         # ideally we'd have something a bit more robust for scrolling rather than just an arbitrary number
         page_height = driver.execute_script("return document.body.scrollHeight")
         while True:
@@ -1322,7 +1325,6 @@ def make_pdf(driver, letter_count, penpal_dir, penpal):
         file.write(base64.b64decode(pdf_data['data']))
     # time.sleep(1) # I can't remember why I put this time.sleep here, I'll comment it and hope for the best.
 
-
     # # Moves PDF into penpal_dir and renames it to pdf_name
     # os.replace(f"{download_path}\\{file}", f"{penpal_dir}\\{file}")  # Moves SLOWLY.pdf into penpal_dir
     # os.rename(f"{penpal_dir}\\{file}", f"{penpal_dir}\\{pdf_name}")  # Renames SLOWLY.pdf to pdf_name var
@@ -1343,6 +1345,7 @@ def make_pdf(driver, letter_count, penpal_dir, penpal):
 def log_current_url(driver):
     logger.debug(f"Current URL: {driver.current_url}")
 
+
 def image_load_check(driver):
     page_load = driver.execute_script("return document.readyState")
     if page_load == "complete":
@@ -1357,6 +1360,7 @@ def image_load_check(driver):
                     loaded_count += 1
             print(f"loaded: {loaded_count}, to load: {images}")
         print("Done! All images should be loaded!")
+
 
 def open_letter(driver, letter_int, letter_count, penpal_dir, penpal):
     log_current_url(driver)
@@ -1516,6 +1520,12 @@ def load_and_print(driver, penpal):
     return logger.debug("end of load and print function")
 
 
+def get_current_chrome():
+    chrome_latest_url = urllib.request.urlopen("https://github.com/Hibbiki/chromium-win64/releases/latest")
+    updated_url = re.sub("tag", "download", chrome_latest_url.geturl())
+    chrome_url = f"{updated_url}/chrome.sync.7z"
+    return chrome_url
+
 def open_chrome():
     logger.debug("Setting Chrome options")
     options = ChromeOptions()
@@ -1557,7 +1567,14 @@ def open_chrome():
     logger.info("Starting selenium")
     try:
         # Had to comment out show_download_progress(resp) from http.py file to stop NoneType error
-        chrome_service = Service(ChromeDriverManager().install())
+        chrome_url = get_current_chrome()
+        latest_version_code = re.search(r"v(\d*)", chrome_url)
+        driver_latest_url = urllib.request.urlopen(
+            f"https://chromedriver.storage.googleapis.com/LATEST_RELEASE_{latest_version_code.group(1)}"
+        )
+        driver_html_bytes = driver_latest_url.read()
+        driver_latest = driver_html_bytes.decode("utf-8")
+        chrome_service = Service(ChromeDriverManager(path=r".\\drivers", version=driver_latest).install())
         chrome_service.creationflags = CREATE_NO_WINDOW
         driver = Chrome(service=chrome_service, options=options)
         logger.info("Opening Slowly")
