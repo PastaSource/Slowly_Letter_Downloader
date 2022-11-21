@@ -42,6 +42,7 @@ stream_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 logger.addHandler(stream_handler)
 
+
 def show_folder_layout():
     folder_layout = os.listdir(dir_path)
     logger.debug("Root path items:")
@@ -61,8 +62,10 @@ def show_folder_layout():
     for item in module_layout:
         logger.debug(os.path.join(module_path, item))
 
+
 try:
     import base64
+    import ctypes
     import re
     import winreg
     import _winapi
@@ -72,11 +75,13 @@ try:
     from selenium.webdriver.support import expected_conditions as EC
     from selenium.webdriver.support.wait import WebDriverWait
     from selenium.webdriver.common.by import By
+    from selenium.common.exceptions import TimeoutException
     from selenium.webdriver.chrome.service import Service
     from webdriver_manager.chrome import ChromeDriverManager
     from selenium.webdriver import Chrome, ChromeOptions
     from subprocess import CREATE_NO_WINDOW
     from pdfrw import PdfReader, PdfWriter
+    import platform
     from cefpython3 import cefpython as cef
     import cefpython3
     import customtkinter
@@ -88,12 +93,19 @@ try:
     import stat
     import inspect
     import threading
+    from textwrap import dedent
 except Exception as e:
     logger.critical(e)
     show_folder_layout()
     os._exit(1)
 else:
     logger.debug("Modules successfully imported!")
+
+# Platforms
+WINDOWS = (platform.system() == "Windows")
+LINUX = (platform.system() == "Linux")
+MAC = (platform.system() == "Darwin")
+
 # URLs
 website = 'https://web.slowly.app/'
 home_url = 'https://web.slowly.app/home'
@@ -136,6 +148,7 @@ print_settings = {
 
 chrome_running = False
 
+
 def chrome_installed():
     try:
         reg_connection = winreg.ConnectRegistry(None, winreg.HKEY_LOCAL_MACHINE)
@@ -145,6 +158,7 @@ def chrome_installed():
     else:
         logger.debug("Chrome installation successfully found")
         return True
+
 
 # GUI class
 class App(customtkinter.CTk):
@@ -179,8 +193,8 @@ class App(customtkinter.CTk):
         # ctypes.windll.shcore.SetProcessDpiAwareness(2)
 
         self.browser_frame = None
-        self.reporthook_counter = 0 # reporthook for download progress
-        self.loading_circle_loaded = False # reports whether loading circle gif is currently loaded
+        self.reporthook_counter = 0  # reporthook for download progress
+        self.loading_circle_loaded = False  # reports whether loading circle gif is currently loaded
         self.penpals = []
         self.check_var_dict = {}
         self.driver = None
@@ -188,6 +202,9 @@ class App(customtkinter.CTk):
         logger.info(f"DPI = {self.dpi}")
 
         self.title("Slowly Letter Downloader")
+        self.bind
+        self.bind("<Configure>", self.on_root_configure)
+        # self.bind("<Configure>", self.on_configure)
         self.geometry(f"{App.WIDTH}x{App.HEIGHT}")
         self.protocol("WM_DELETE_WINDOW", self.on_closing)  # call .on_closing() when app gets closed
         self.iconbitmap(os.path.join(interface_path, "SLD_icon.ico"))
@@ -230,6 +247,7 @@ class App(customtkinter.CTk):
             width=self.frame_right_width
         )
         self.frame_right.pack(anchor="e", expand=1, fill="both")
+        self.frame_right.bind("<Configure>", self.on_configure)  # Allow cefpython resizing
 
         # Penpals title frame
         self.frame_left_penpals_title = customtkinter.CTkFrame(
@@ -451,7 +469,6 @@ class App(customtkinter.CTk):
         App.FRAME_RIGHT_PROGRESS_ID = self.frame_right_progress.winfo_name()
         App.FRAME_RIGHT_LOADING_ID = self.frame_right_loading.winfo_name()
 
-
     def load_gif(self, gif_frame):
         self.selected_gif_frame = gif_frame
         gif = os.path.join(interface_path, 'loading_circle.gif')
@@ -486,7 +503,7 @@ class App(customtkinter.CTk):
         self.loading_circle_loaded = False
 
     def loading_frame_init(self):
-        self.frame_right_loading.grid_rowconfigure((0,3), weight=1)
+        self.frame_right_loading.grid_rowconfigure((0, 3), weight=1)
         self.frame_right_loading.grid_columnconfigure(0, weight=1)
 
         self.loading_title = customtkinter.CTkLabel(
@@ -524,10 +541,9 @@ class App(customtkinter.CTk):
         self.settings_window.geometry("400x200")
         # self.grid_columnconfigure(1, weight=1)
 
-
         self.settings_popup_label = customtkinter.CTkLabel(self.settings_window,
-                                                      text="SLD Settings",
-                                                      text_font=(self.typewriter_font, -25))
+                                                           text="SLD Settings",
+                                                           text_font=(self.typewriter_font, -25))
         # settings_popup_label.grid(row=1, column=1, columnspan=1, pady=20, padx=20)
         self.settings_popup_label.pack(anchor="center", side="top", pady=20)
 
@@ -540,7 +556,6 @@ class App(customtkinter.CTk):
         )
         # self.appearance_selector.grid(row=2, column=1, columnspan=1, pady=20, padx=20)
         self.appearance_selector.pack(anchor="center", pady=20)
-
 
     def change_appearance_mode(self, new_appearance_mode):
         customtkinter.set_appearance_mode(new_appearance_mode)
@@ -574,6 +589,8 @@ class App(customtkinter.CTk):
             # cef.QuitMessageLoop()
             # MAY BE IMPOSSIBLE TO START UP AGAIN ONCE SHUTDOWN
             cef.Shutdown()
+            self.unbind("<Configure>")
+            self.frame_right.unbind("<Configure>")
             self.frame_right_browser.forget()
         except Exception as e:
             logger.critical(e)
@@ -770,7 +787,7 @@ class App(customtkinter.CTk):
         logger.info("deselect all button pressed")
 
     def deactivate_buttons(self):
-        logger.debug("Disabling buttons")
+        logger.debug("Deactivating buttons")
         if self.run_button.state == "normal":
             self.run_button.configure(state="disabled")
         try:
@@ -780,9 +797,16 @@ class App(customtkinter.CTk):
             if self.deselect_all_button.state == "normal":
                 self.deselect_all_button.configure(state="disabled")
 
-
     def reactivate_buttons(self):
-        pass
+        logger.debug("Reactivating buttons")
+        if self.run_button.state == "disabled":
+            self.run_button.configure(state="normal")
+        try:
+            if self.select_all_button.state == "disabled":
+                self.select_all_button.configure(state="normal")
+        except:
+            if self.deselect_all_button.state == "disabled":
+                self.deselect_all_button.configure(state="normal")
 
     def run_button_click(self):
         logger.info("run button pressed")
@@ -821,7 +845,6 @@ class App(customtkinter.CTk):
         )
         thread.start()
 
-
     def run_button_end(self):
         logger.debug("Finished printing")
         # self.frame_right_progress_reset()
@@ -844,12 +867,13 @@ class App(customtkinter.CTk):
         else:
             logger.debug("frame_right_progress_idle function successfully ran")
 
+        self.reactivate_buttons()
+
         self.loading_circle_loaded = False
         logger.debug("End of run_button_event")
 
-
     def set_progress_bar(self, letter_amount, current_letter, penpal):
-        self.frame_right_progress.grid_rowconfigure((0,4), weight=1)
+        self.frame_right_progress.grid_rowconfigure((0, 4), weight=1)
         self.frame_right_progress.grid_columnconfigure(0, weight=1)
 
         # try:
@@ -963,6 +987,7 @@ class App(customtkinter.CTk):
             'log_file': os.path.join(cefpython3_path, "debug.log"),
             "cache_path": cef_cache,
             "auto_zooming": "-1.0"
+            # "windowless_rendering_enabled": "0"
         }
         # try:
         #     # Here as a bandaid until I sort out permission issues
@@ -1016,7 +1041,6 @@ class App(customtkinter.CTk):
         logger.debug("Initiate run_button.wait_variable()")
         self.run_button.wait_variable()
 
-
     def download_chrome_progress(self):
         self.progress_bar_download_chrome_title = customtkinter.CTkLabel(
             master=self.frame_right_download_chrome,
@@ -1043,7 +1067,6 @@ class App(customtkinter.CTk):
         )
         self.frame_right.update()
 
-
     def reporthook(self, count, block_size, total_size):
         # percent = int(count * block_size * 100 / total_size)
         downloaded = count * block_size
@@ -1054,7 +1077,6 @@ class App(customtkinter.CTk):
         else:
             pass
 
-
     def download_chrome(self):
         if exists(chrome_executable_path):
             pass
@@ -1063,7 +1085,7 @@ class App(customtkinter.CTk):
             self.loading_frame_unload()
 
             self.frame_right_download_chrome.pack(expand=1, fill="both")
-            self.frame_right_download_chrome.grid_rowconfigure((0,4), weight=1)
+            self.frame_right_download_chrome.grid_rowconfigure((0, 4), weight=1)
             self.frame_right_download_chrome.grid_columnconfigure(0, weight=1)
 
             self.download_chrome_progress()
@@ -1102,8 +1124,13 @@ class App(customtkinter.CTk):
                 sticky="nsew",
             )
 
+            chrome_url = get_current_chrome()
+            # chrome_latest_url = urllib.request.urlopen("https://github.com/Hibbiki/chromium-win64/releases/latest")
+            # updated_url = re.sub("tag", "download", chrome_latest_url.geturl())
+            # chrome_url = f"{updated_url}/chrome.sync.7z"
+
             urllib.request.urlretrieve(
-                'https://github.com/Hibbiki/chromium-win64/releases/download/v105.0.5195.102-r856/chrome.sync.7z',
+                chrome_url,
                 'chrome.sync.7z',
                 self.reporthook
             )
@@ -1115,6 +1142,18 @@ class App(customtkinter.CTk):
             # Back to loading! We did it! We downloaded Chrome! Woohoo!
             # self.frame_right_loading.pack(expand=1, fill="both")
             self.loading_frame_load()
+
+    def on_root_configure(self, _):
+        logger.debug("MainFrame.on_root_configure")
+        if self.browser_frame:
+            self.browser_frame.on_root_configure()
+
+    def on_configure(self, event):
+        logger.debug("App.on_configure")
+        if self.browser_frame:
+            width = event.width
+            height = event.height
+            self.browser_frame.on_mainframe_configure(width, height)
 
     def on_closing(self, event=0):
         logger.debug("Iniating shutdown sequence")
@@ -1151,7 +1190,7 @@ class BrowserFrame(tk.Frame):
     def embed_browser(self):
         logger.info("embed browser")
         window_info = cef.WindowInfo()
-        rect = [0, 0, BrowserFrame.FRAME_RIGHT_WIDTH, self.winfo_height() + 17]
+        rect = [0, 0, self.winfo_width(), self.winfo_height() + 17]
         window_info.SetAsChild(self.get_window_handle(), rect)
         self.browser = cef.CreateBrowserSync(window_info, url="https://web.slowly.app/")
         # logger.info(self.browser.GetUrl())
@@ -1183,6 +1222,21 @@ class BrowserFrame(tk.Frame):
         if not self.browser:
             self.embed_browser()
 
+    def on_root_configure(self):
+        # Root <Configure> event will be called when top window is moved
+        if self.browser:
+            self.browser.NotifyMoveOrResizeStarted()
+
+    def on_mainframe_configure(self, width, height):
+        if self.browser:
+            if WINDOWS:
+                ctypes.windll.user32.SetWindowPos(
+                    self.browser.GetWindowHandle(), 0,
+                    0, 0, width, height, 0x0002)
+            elif LINUX:
+                self.browser.SetBounds(0, 0, width, height)
+            self.browser.NotifyMoveOrResizeStarted()
+
     def on_root_close(self):
         if self.browser:
             self.browser.CloseBrowser(True)
@@ -1196,7 +1250,8 @@ class BrowserFrame(tk.Frame):
 def scroll_down(driver):
     try:
         # Scrolls through letters to load them
-        scroll_pause_time = 2
+        scroll_pause_time = 1  # was originally 2, halved it and am hoping for the best
+        # ideally we'd have something a bit more robust for scrolling rather than just an arbitrary number
         page_height = driver.execute_script("return document.body.scrollHeight")
         while True:
             # Scroll down to bottom
@@ -1268,7 +1323,7 @@ def make_pdf(driver, letter_count, penpal_dir, penpal):
     pdf_data = driver.execute_cdp_cmd("Page.printToPDF", print_settings)
     with open(os.path.join(download_path, penpal_dir, pdf_name), 'wb') as file:
         file.write(base64.b64decode(pdf_data['data']))
-    time.sleep(1)
+    # time.sleep(1) # I can't remember why I put this time.sleep here, I'll comment it and hope for the best.
 
     # # Moves PDF into penpal_dir and renames it to pdf_name
     # os.replace(f"{download_path}\\{file}", f"{penpal_dir}\\{file}")  # Moves SLOWLY.pdf into penpal_dir
@@ -1286,8 +1341,26 @@ def make_pdf(driver, letter_count, penpal_dir, penpal):
     else:
         logger.info(f"Letter {letter_count} failed to print.")
 
+
 def log_current_url(driver):
     logger.debug(f"Current URL: {driver.current_url}")
+
+
+def image_load_check(driver):
+    page_load = driver.execute_script("return document.readyState")
+    if page_load == "complete":
+        print("page loaded, counting images")
+        images = driver.execute_script("return document.images.length")
+        print(images)
+        loaded_count = 0
+        while loaded_count != images:
+            for image in range(images):
+                result = driver.execute_script(f"return document.images[{image}].complete")
+                if result:
+                    loaded_count += 1
+            print(f"loaded: {loaded_count}, to load: {images}")
+        print("Done! All images should be loaded!")
+
 
 def open_letter(driver, letter_int, letter_count, penpal_dir, penpal):
     log_current_url(driver)
@@ -1314,7 +1387,8 @@ def open_letter(driver, letter_int, letter_count, penpal_dir, penpal):
                 logger.error(e)
             time.sleep(0.5)
         logger.info("Please allow time for the images to properly load.")
-        time.sleep(5)
+        # time.sleep(5)
+        image_load_check(driver)
     else:
         pass
 
@@ -1390,7 +1464,9 @@ def load_and_print(driver, penpal):
             EC.presence_of_element_located((By.XPATH, letter_xpath)))
         logger.info("Loading letters")
         scroll_down(driver)
-    finally:
+    except TimeoutException:
+        logger.critical("Could not load letters :(")
+    else:
         logger.info("Letters loaded!")
         pass
 
@@ -1439,11 +1515,16 @@ def load_and_print(driver, penpal):
     else:
         logger.info(f"{amount_letters} letters successfully printed!")
 
-
     # driver.quit()
     # chrome_running = False
     return logger.debug("end of load and print function")
 
+
+def get_current_chrome():
+    chrome_latest_url = urllib.request.urlopen("https://github.com/Hibbiki/chromium-win64/releases/latest")
+    updated_url = re.sub("tag", "download", chrome_latest_url.geturl())
+    chrome_url = f"{updated_url}/chrome.sync.7z"
+    return chrome_url
 
 def open_chrome():
     logger.debug("Setting Chrome options")
@@ -1486,7 +1567,14 @@ def open_chrome():
     logger.info("Starting selenium")
     try:
         # Had to comment out show_download_progress(resp) from http.py file to stop NoneType error
-        chrome_service = Service(ChromeDriverManager().install())
+        chrome_url = get_current_chrome()
+        latest_version_code = re.search(r"v(\d*)", chrome_url)
+        driver_latest_url = urllib.request.urlopen(
+            f"https://chromedriver.storage.googleapis.com/LATEST_RELEASE_{latest_version_code.group(1)}"
+        )
+        driver_html_bytes = driver_latest_url.read()
+        driver_latest = driver_html_bytes.decode("utf-8")
+        chrome_service = Service(ChromeDriverManager(path=r".\\drivers", version=driver_latest).install())
         chrome_service.creationflags = CREATE_NO_WINDOW
         driver = Chrome(service=chrome_service, options=options)
         logger.info("Opening Slowly")
@@ -1501,6 +1589,7 @@ def open_chrome():
 
 
 def chrome_main(driver):
+    logger.debug("chrome_main init")
     logger.debug("Attempting to login using selenium")
     attempt = 0
     while driver.current_url != home_url and attempt <= 10:
@@ -1518,13 +1607,16 @@ def chrome_main(driver):
     logger.info("Successful login detected! Please select a penpal.")
     # logger.info(driver.current_url)
     # Why no work?!
-    # try:
-    #     WebDriverWait(driver, 30).until(
-    #         EC.presence_of_element_located((By.XPATH, penpals_xpath)))
-    # finally:
-    #     pass
-    logger.debug("time.sleep(3)")
-    time.sleep(3)  # Bandaid until above is fixed
+    logger.debug("chrome_main WebDriverWait")
+    try:
+        WebDriverWait(driver, 30).until(
+            EC.presence_of_element_located((By.XPATH, penpals_xpath)))
+    except TimeoutException:
+        logger.critical("Could not load penpals_xpath :(")
+    else:
+        logger.debug("penpals_xpath found! Yay!!!")
+    # logger.debug("time.sleep(3)")
+    # time.sleep(3)  # Bandaid until above is fixed
     # tk.Tk.after(1000, logger.debug("after(1000) complete"))
     logger.debug("Get list of available penpals via xpath")
     available_penpals = driver.find_elements(By.XPATH, penpals_xpath)
